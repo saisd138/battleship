@@ -112,7 +112,7 @@
             border: 2px dashed #fca5a5; /* red-300 */
             color: #9ca3af; /* gray-400 */
             /* Sizing to match the new 6x6 grid card */
-            width: 299px; 
+            width: 289px; /* Updated size: (35*7 + 2*6 + 16*2) = 245+12+32 = 289 */
             height: 385px;
             display: flex;
             flex-direction: column;
@@ -138,9 +138,30 @@
             border-color: #2563eb; /* blue-600 */
             box-shadow: 0 0 0 3px #fff;
         }
-        .color-swatch:hover {
+        .color-swatch:hover:not(.disabled) {
             opacity: 0.8;
         }
+        .color-swatch.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            position: relative;
+        }
+        /* "X" mark for disabled colors */
+        .color-swatch.disabled::before,
+        .color-swatch.disabled::after {
+            position: absolute;
+            content: '';
+            width: 70%;
+            height: 2px;
+            background-color: #4b5563;
+            top: 50%;
+            left: 15%;
+            transform: rotate(45deg);
+        }
+        .color-swatch.disabled::after {
+            transform: rotate(-45deg);
+        }
+
 
     </style>
 </head>
@@ -166,13 +187,7 @@
                     <input type="text" id="name-input" class="w-full bg-white border border-gray-300 rounded-md p-3 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="E.g., Captain-A">
                 </div>
 
-                <!-- Color Picker -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Choose Your Color</label>
-                    <div id="color-picker" class="flex flex-wrap gap-3">
-                        <!-- Swatches will be injected here -->
-                    </div>
-                </div>
+                <!-- Color Picker REMOVED from here -->
 
                 <!-- Create Room -->
                 <div class="border-b border-gray-200 pb-6">
@@ -219,8 +234,8 @@
                 <div class="flex-shrink-0 w-full lg:w-auto">
                     <!-- Setup Controls -->
                     <div id="setup-controls" class="hidden bg-white p-4 rounded-lg shadow-lg mb-6 text-center">
-                        <h3 id="setup-instructions" class="text-xl font-semibold text-yellow-600">Place your 9 ships on your grid below.</h3>
-                        <p class="text-lg mt-2">Ships Placed: <span id="ships-placed-count" class="font-bold text-2xl">0</span> / 9</p>
+                        <h3 id="setup-instructions" class="text-xl font-semibold text-yellow-600">Place your 5 ships on your grid below.</h3>
+                        <p class="text-lg mt-2">Ships Placed: <span id="ships-placed-count" class="font-bold text-2xl">0</span> / 5</p>
                         <button id="ready-button" disabled class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-md shadow-lg transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed">
                             Ready
                         </button>
@@ -273,13 +288,27 @@
             <!-- Start Game Button (for waiting room) -->
             <div id="waiting-room-controls" class="bg-white p-6 rounded-lg shadow-lg text-center mt-6">
                 <h3 class="text-2xl font-bold text-gray-800 mb-4">Waiting Room</h3>
+                
+                <!-- Player List -->
                 <div id="player-list-container" class="flex flex-wrap justify-center gap-4 mb-6">
                     <!-- Player list will be inserted here -->
                 </div>
-                <button id="start-game-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
-                    Start Game
-                </button>
-                <p id="start-game-error" class="text-red-500 text-sm mt-2 h-4"></p>
+                
+                <!-- Color Picker ADDED here -->
+                <div class="border-t border-gray-200 pt-6 mt-6">
+                    <label class="block text-lg font-medium text-gray-700 mb-4">Choose Your Color</label>
+                    <div id="room-color-picker" class="flex flex-wrap justify-center gap-3 max-w-md mx-auto">
+                        <!-- Swatches will be injected here -->
+                    </div>
+                </div>
+
+                <!-- Start Button -->
+                <div class="border-t border-gray-200 pt-6 mt-6">
+                    <button id="start-game-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
+                        Start Game
+                    </button>
+                    <p id="start-game-error" class="text-red-500 text-sm mt-2 h-4"></p>
+                </div>
             </div>
         </div>
     </div>
@@ -330,7 +359,7 @@
 
         // --- Game Constants ---
         const GRID_SIZE = 6;
-        const SHIP_COUNT = 9;
+        const SHIP_COUNT = 5; // <-- UPDATED
         const MAX_PLAYERS = 20;
 
         // --- Global Variables ---
@@ -338,7 +367,7 @@
         let userId, myPlayerName, currentRoomCode;
         let localGameData = null;
         let unsubscribeRoom = null;
-        let myPlayerColor = '#A1C9F4'; // Default color
+        // let myPlayerColor = '#A1C9F4'; // No longer set here
         let isMovingShip = false;      // State for moving a ship
         let shipToMoveIndex = null;  // Index of the ship being moved
 
@@ -362,6 +391,7 @@
             '#FDEEAA', // Buttercream
             '#D4F0F0', // Light Cyan
         ];
+        const DEFAULT_COLOR = '#6b7280'; // Gray
 
         // --- Firebase Configuration ---
         const firebaseConfig = {
@@ -386,7 +416,7 @@
         const joinButton = document.getElementById('join-button');
         const createRoomButton = document.getElementById('create-room-button');
         const loginError = document.getElementById('login-error');
-        const colorPicker = document.getElementById('color-picker');
+        // const colorPicker = document.getElementById('color-picker'); // Removed
 
         const roomDisplay = document.getElementById('room-display');
         const gameStatus = document.getElementById('game-status');
@@ -408,6 +438,7 @@
         
         const waitingRoomControls = document.getElementById('waiting-room-controls');
         const playerListContainer = document.getElementById('player-list-container');
+        const roomColorPicker = document.getElementById('room-color-picker'); // Added
         const startGameButton = document.getElementById('start-game-button');
         const startGameError = document.getElementById('start-game-error');
         
@@ -470,14 +501,14 @@
             return {
                 userId: userId,
                 name: myPlayerName,
-                color: myPlayerColor,
+                color: null, // <-- UPDATED: Color set after joining
                 // 0: empty
                 // 1: ship
                 // { type: 'miss', attackerId: '...', attackerColor: '...' }
                 // { type: 'hit', attackerId: '...', attackerColor: '...' }
                 grid: Array(GRID_SIZE * GRID_SIZE).fill(0),
                 shipsPlaced: 0,
-                shipsLeft: SHIP_COUNT, // <-- UPDATED
+                shipsLeft: SHIP_COUNT, // <-- Uses new constant
                 isOut: false,
                 ready: false 
             };
@@ -493,6 +524,7 @@
         function createGridHTML(player, isMe, isTurnActive = false) {
             const gridClasses = isMe ? 'my-grid' : 'opponent-grid' + (isTurnActive ? ' turn-active' : '');
             let cellsHTML = '';
+            const playerColor = player.color || DEFAULT_COLOR;
             
             // Add column headers
             cellsHTML += '<div class="grid-label"></div>'; // Empty corner
@@ -501,7 +533,7 @@
             }
 
             // Add rows with headers
-            const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F']; // <-- UPDATED
+            const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F']; 
             for (let r = 0; r < GRID_SIZE; r++) {
                 cellsHTML += `<div class="grid-label">${rowLabels[r]}</div>`; // Row header
                 for (let c = 0; c < GRID_SIZE; c++) {
@@ -518,11 +550,11 @@
                             if (cellState.type === 'miss') {
                                 cellClass += ' miss';
                                 content = 'X';
-                                style = `color: ${cellState.attackerColor};`;
+                                style = `color: ${cellState.attackerColor || DEFAULT_COLOR};`;
                             } else if (cellState.type === 'hit') {
                                 cellClass += ' hit';
                                 content = '🚢';
-                                style = `background-color: ${cellState.attackerColor};`;
+                                style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
                             }
                         }
                         // Show highlight if selected for moving
@@ -535,11 +567,11 @@
                              if (cellState.type === 'miss') {
                                 cellClass += ' miss';
                                 content = 'X';
-                                style = `color: ${cellState.attackerColor};`;
+                                style = `color: ${cellState.attackerColor || DEFAULT_COLOR};`;
                             } else if (cellState.type === 'hit') {
                                 cellClass += ' hit';
                                 content = '🚢';
-                                style = `background-color: ${cellState.attackerColor};`;
+                                style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
                             }
                         }
                     }
@@ -550,7 +582,7 @@
 
             return `
                 <div class="p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
-                    <h3 class="font-bold text-lg text-center mb-2" style="color: ${player.color};">${player.name}</h3>
+                    <h3 class="font-bold text-lg text-center mb-2" style="color: ${playerColor};">${player.name}</h3>
                     <p class="text-center text-sm text-gray-600 mb-3">Ships Left: ${player.shipsLeft}</p>
                     <div class="grid-wrapper">
                         ${cellsHTML}
@@ -565,16 +597,39 @@
          * @returns {string} - The HTML string for the card.
          */
         function createPlayerOutHTML(player) {
-            // Sizing: (7 cells * 35px) + (6 gaps * 2px) + (2 paddings * 16px) = 245 + 12 + 32 = 289px.
-            // My grid is 289px wide.
-            // Height: 289px + 32px (name) + 20px (ships) + 24px (margins) = 365px.
-            // Let's use w-[289px] h-[385px]
             return `
                 <div class="p-4 rounded-lg shadow-md player-out-card w-[289px] h-[385px]">
                     <h3 class="font-bold text-lg text-center mb-3 text-gray-500">${player.name}</h3>
                     <p class="text-2xl text-red-500 font-bold">ELIMINATED</p>
                 </div>
             `;
+        }
+
+        /**
+         * NEW: Renders the color picker in the waiting room.
+         * @param {object} roomData - The current room data.
+         */
+        function renderColorPicker(roomData) {
+            roomColorPicker.innerHTML = ''; // Clear existing swatches
+            const usedColors = roomData.players.map(p => p.color).filter(Boolean);
+            const myColor = roomData.players.find(p => p.userId === userId)?.color;
+
+            PLAYER_COLORS.forEach(color => {
+                const swatch = document.createElement('div');
+                swatch.className = 'color-swatch';
+                swatch.style.backgroundColor = color;
+                swatch.dataset.color = color;
+
+                if (usedColors.includes(color) && color !== myColor) {
+                    swatch.classList.add('disabled');
+                }
+                
+                if (color === myColor) {
+                    swatch.classList.add('selected');
+                }
+                
+                roomColorPicker.appendChild(swatch);
+            });
         }
         
         // --- Main UI Render Function ---
@@ -626,14 +681,19 @@
                     gameStatus.textContent = "Waiting for Players... (Share Code!)";
                     waitingRoomControls.classList.remove('hidden');
                     
+                    // Show list of joined players
                     roomData.players.forEach(player => {
                         const playerCard = `
                             <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center">
-                                <h3 class="font-bold text-xl" style="color: ${player.color};">${player.name}</h3>
+                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name}</h3>
+                                ${player.color ? '' : '<p class="text-sm text-red-500">Choosing color...</p>'}
                             </div>
                         `;
                         playerListContainer.innerHTML += playerCard;
                     });
+                    
+                    // Render the color picker
+                    renderColorPicker(roomData);
                     break;
 
                 case "setup":
@@ -707,15 +767,39 @@
         
         // --- Event Handlers ---
 
-        function handleColorPick(e) {
-            if (!e.target.matches('.color-swatch')) return;
-            document.querySelectorAll('.color-swatch').forEach(swatch => {
-                swatch.classList.remove('selected');
-            });
-            const selectedSwatch = e.target;
-            selectedSwatch.classList.add('selected');
-            myPlayerColor = selectedSwatch.dataset.color;
+        /**
+         * NEW: Handles selecting a color in the waiting room.
+         * @param {Event} e - The click event.
+         */
+        async function handleColorSelectInRoom(e) {
+            const swatch = e.target.closest('.color-swatch');
+            if (!swatch || swatch.classList.contains('disabled')) return;
+            if (!localGameData || localGameData.gameState !== 'waiting') return;
+
+            const newColor = swatch.dataset.color;
+            const myPlayer = localGameData.players.find(p => p.userId === userId);
+
+            if (myPlayer.color === newColor) return; // Already selected
+
+            // Optimistically update UI
+            document.querySelectorAll('#room-color-picker .color-swatch').forEach(s => s.classList.remove('selected'));
+            swatch.classList.add('selected');
+
+            // Update firestore
+            const newPlayers = localGameData.players.map(p => 
+                p.userId === userId ? { ...p, color: newColor } : p
+            );
+            
+            const roomRef = doc(db, getRoomPath());
+            try {
+                await updateDoc(roomRef, { players: newPlayers });
+            } catch (err) {
+                console.error("Error setting color:", err);
+                showMessage("Error setting color. Please try again.");
+                // Snapshot will fix the UI
+            }
         }
+
 
         async function handleCreateRoom() {
             const name = nameInput.value.trim();
@@ -802,12 +886,14 @@
                     const roomData = roomSnap.data();
                     
                     if (roomData.players.find(p => p.userId === userId)) {
+                        // Player rejoining, just update name. Color is preserved.
                         const newPlayers = roomData.players.map(p => 
-                            p.userId === userId ? { ...p, name: myPlayerName, color: myPlayerColor } : p
+                            p.userId === userId ? { ...p, name: myPlayerName } : p
                         );
                         await updateDoc(roomRef, { players: newPlayers });
                     } else {
-                        if (roomData.players.length >= MAX_PLAYERS) { // <-- UPDATED LIMIT
+                        // New player joining
+                        if (roomData.players.length >= MAX_PLAYERS) { 
                             throw new Error(`Room is full (max ${MAX_PLAYERS} players).`);
                         }
                         if (roomData.gameState !== "waiting") {
@@ -839,6 +925,12 @@
             if (localGameData.players.length < 2) {
                 startGameError.textContent = "Need at least 2 players to start.";
                 return;
+            }
+
+            // NEW: Check if all players have selected a color
+            if (localGameData.players.some(p => p.color === null)) {
+                 startGameError.textContent = "All players must choose a color before starting.";
+                 return;
             }
             
             startGameError.textContent = "";
@@ -873,9 +965,8 @@
             const index = toIndex(row, col);
 
             // --- Move Ship Logic ---
-            // This runs only if we are in the "playing" state AND isMovingShip is true
             if (localGameData.gameState === 'playing' && isMovingShip) {
-                if (!cellEl.closest('.my-grid')) return; // Can only move on my grid
+                if (!cellEl.closest('.my-grid')) return; 
                 
                 const myPlayer = localGameData.players.find(p => p.userId === userId);
                 
@@ -883,7 +974,7 @@
                     // --- 1. Selecting the ship to move ---
                     if (myPlayer.grid[index] === 1) { // It's an un-hit ship
                         shipToMoveIndex = index;
-                        cellEl.classList.add('ship-selected-for-move'); // Add visual highlight
+                        cellEl.classList.add('ship-selected-for-move'); 
                         gameStatus.textContent = "Move: Select an empty cell.";
                     } else {
                         showMessage("You must select one of your un-hit ships (dark gray squares).");
@@ -901,7 +992,7 @@
                         showMessage("You must select an empty cell (light blue) as the destination.");
                     }
                 }
-                return; // End click handler here, don't fall through
+                return; 
             }
 
             // --- Setup Logic ---
@@ -1001,10 +1092,7 @@
          * @param {number} cellIndex - The cell index being attacked (0-35).
          */
         async function handleAttackClick(targetPlayerId, cellIndex) {
-            // Cancel any move state just in case
             cancelMove();
-
-            // Prevent multiple clicks by disabling grid
             opponentGridsContainer.style.pointerEvents = 'none';
 
             const attacker = localGameData.players[localGameData.currentPlayerIndex];
@@ -1027,10 +1115,11 @@
 
             // 1. Update target player
             const newGrid = [...targetPlayer.grid];
+            const attackerColor = attacker.color || DEFAULT_COLOR; // Fallback
             if (wasHit) {
-                newGrid[cellIndex] = { type: 'hit', attackerId: attacker.userId, attackerColor: attacker.color };
+                newGrid[cellIndex] = { type: 'hit', attackerId: attacker.userId, attackerColor: attackerColor };
             } else {
-                newGrid[cellIndex] = { type: 'miss', attackerId: attacker.userId, attackerColor: attacker.color };
+                newGrid[cellIndex] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor };
             }
             
             let newShipsLeft = targetPlayer.shipsLeft;
@@ -1089,40 +1178,23 @@
         
         // --- NEW: Ship Moving Functions ---
 
-        /**
-         * Initiates the "Move Ship" state.
-         */
         function handleMoveShipClick() {
             isMovingShip = true;
             shipToMoveIndex = null;
-            // Re-render to show new UI state
             renderGameUI(localGameData);
         }
 
-        /**
-         * Cancels the "Move Ship" state.
-         */
         function cancelMove() {
-            // De-select any highlighted cell
             const selected = document.querySelector('.ship-selected-for-move');
             if(selected) selected.classList.remove('ship-selected-for-move');
-
             isMovingShip = false;
             shipToMoveIndex = null;
-            
-            // Re-render to restore original UI
             if (localGameData) {
                 renderGameUI(localGameData);
             }
         }
 
-        /**
-         * Confirms the ship move and writes to Firestore.
-         * @param {number} fromIndex - The grid index to move from.
-         * @param {number} toIndex - The grid index to move to.
-         */
         async function handleConfirmMove(fromIndex, toIndex) {
-            // Disable UI
             gameStatus.textContent = "Moving ship...";
             myTurnActions.classList.add('hidden');
             myGridContainer.style.pointerEvents = 'none';
@@ -1155,7 +1227,6 @@
                 console.error("Error moving ship:", err);
                 showMessage("Error moving ship. Please try again.");
             } finally {
-                // Reset state and re-enable UI (Firestore snapshot will do most of this)
                 myGridContainer.style.pointerEvents = 'auto';
                 cancelMove();
             }
@@ -1189,21 +1260,6 @@
             gameScreen.classList.remove('hidden');
         }
 
-        function initColorPicker() {
-            PLAYER_COLORS.forEach((color, index) => {
-                const swatch = document.createElement('div');
-                swatch.className = 'color-swatch';
-                swatch.style.backgroundColor = color;
-                swatch.dataset.color = color;
-                if (index === 0) {
-                    swatch.classList.add('selected');
-                    myPlayerColor = color;
-                }
-                colorPicker.appendChild(swatch);
-            });
-            colorPicker.addEventListener('click', handleColorPick);
-        }
-
         // --- Firebase Initialization ---
 
         async function signIn() {
@@ -1226,7 +1282,6 @@
                     const oldState = localGameData ? localGameData.gameState : null;
                     localGameData = doc.data();
                     
-                    // Re-enable grid clicks on any state update
                     opponentGridsContainer.style.pointerEvents = 'auto';
                     myGridContainer.style.pointerEvents = 'auto';
                     
@@ -1264,7 +1319,7 @@
                     if (user) {
                         userId = user.uid;
                         console.log("Authenticated with userId:", userId);
-                        initColorPicker();
+                        // initColorPicker(); // Removed from here
                         showLoginScreen(); 
                     } else {
                         console.log("User is not authenticated. Attempting sign-in...");
@@ -1283,6 +1338,8 @@
                 readyButton.addEventListener('click', handleReadyClick);
                 moveShipButton.addEventListener('click', handleMoveShipClick);
                 cancelMoveButton.addEventListener('click', cancelMove);
+                
+                roomColorPicker.addEventListener('click', handleColorSelectInRoom); // Added
                 
                 messageOkButton.addEventListener('click', () => {
                     messageModal.classList.add('hidden');
