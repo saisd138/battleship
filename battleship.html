@@ -1247,7 +1247,10 @@
                 });
                 // On success, set local flag and reset state
                 hasMovedShipThisTurn = true;
-                cancelMove(); // This will re-enable grid and call render
+                cancelMove(); // This will call render
+                // FIX: Explicitly re-enable pointer events here,
+                // just in case the snapshot is delayed.
+                myGridContainer.style.pointerEvents = 'auto'; 
             } catch (err) {
                 console.error("Error moving ship:", err);
                 showMessage("Error moving ship. Please try again.");
@@ -1397,4 +1400,5 @@
     </script>
 </body>
 </html>
+
 
