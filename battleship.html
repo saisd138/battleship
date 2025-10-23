@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battleship Royale</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom game-specific styles */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Constants for grid size */
+        :root {
+            --grid-size: 6;
+            --cell-size: 35px; /* Slightly smaller for 6x6 */
+            --label-size: 35px;
+        }
+        
+        /* Base cell style */
+        .grid-cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background-color: #cce7ff; /* light-blue-100 */
+            border: 1px solid #a3d5ff; /* light-blue-200 */
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem; /* 16px */
+            font-weight: bold;
+            transition: all 0.15s ease-in-out;
+            position: relative;
+        }
+
+        /* Row/Col labels */
+        .grid-label {
+            width: var(--label-size);
+            height: var(--label-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #6b7280; /* gray-500 */
+        }
+        .grid-wrapper {
+            display: grid;
+            /* 1 label + 6 cells */
+            grid-template-columns: var(--label-size) repeat(var(--grid-size), var(--cell-size));
+            grid-template-rows: var(--label-size) repeat(var(--grid-size), var(--cell-size));
+            gap: 2px;
+        }
+
+        /* My grid: hover effect */
+        .my-grid .grid-cell:not(.ship):not(.miss):not(.hit):not(.ship-selected-for-move):hover {
+            background-color: #a3d5ff; /* light-blue-200 */
+        }
+        
+        /* My grid: placed ship */
+        .my-grid .grid-cell.ship {
+            background-color: #4b5563; /* gray-600 */
+            border-color: #374151; /* gray-700 */
+        }
+
+        /* Opponent grid: fog of war (looks default) */
+        .opponent-grid .grid-cell.ship {
+            background-color: #cce7ff; /* light-blue-100 */
+            cursor: not-allowed;
+        }
+
+        /* Opponent grid: active turn hover effect */
+        .opponent-grid.turn-active .grid-cell:not(.miss):not(.hit):hover {
+            background-color: #fef08a; /* yellow-200 */
+            border-color: #fde047; /* yellow-300 */
+        }
+        
+        /* All grids: miss */
+        .grid-cell.miss {
+            cursor: not-allowed;
+            /* Color is set by JS */
+        }
+        
+        /* All grids: hit */
+        .grid-cell.hit {
+            /* Background-color is set by JS */
+            border-color: #4b5563; /* gray-600 */
+            cursor: not-allowed;
+            animation: hit-animation 0.5s ease;
+            color: #1f2937; /* gray-800 */
+        }
+        
+        @keyframes hit-animation {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        /* Style for ship selected to be moved */
+        .grid-cell.ship-selected-for-move {
+            background-color: #fef08a; /* yellow-200 */
+            border-color: #fde047; /* yellow-300 */
+            box-shadow: 0 0 10px #fde047;
+        }
+
+        /* Player card when out */
+        .player-out-card {
+            background-color: #f3f4f6; /* gray-100 */
+            border: 2px dashed #fca5a5; /* red-300 */
+            color: #9ca3af; /* gray-400 */
+            /* Sizing to match the new 6x6 grid card */
+            width: 299px; 
+            height: 385px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Modal backdrop */
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.25);
+        }
+
+        /* Color picker */
+        .color-swatch {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.15s ease;
+        }
+        .color-swatch.selected {
+            border-color: #2563eb; /* blue-600 */
+            box-shadow: 0 0 0 3px #fff;
+        }
+        .color-swatch:hover {
+            opacity: 0.8;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen p-4 sm:p-6">
+
+    <!-- Main Game Container -->
+    <div id="app-container" class="max-w-screen-2xl mx-auto">
+
+        <!-- Loading Screen -->
+        <div id="loading-screen" class="text-center p-12">
+            <h1 class="text-3xl font-bold text-cyan-600">Battleship Royale</h1>
+            <p class="text-xl mt-4">Initializing connection...</p>
+        </div>
+
+        <!-- Login Screen -->
+        <div id="login-screen" class="hidden max-w-lg mx-auto bg-white p-8 rounded-lg shadow-xl">
+            <h1 class="text-3xl font-bold text-center text-cyan-600 mb-6">Battleship Royale</h1>
+            
+            <div class="space-y-4">
+                <!-- Shared Name Input -->
+                <div>
+                    <label for="name-input" class="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+                    <input type="text" id="name-input" class="w-full bg-white border border-gray-300 rounded-md p-3 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="E.g., Captain-A">
+                </div>
+
+                <!-- Color Picker -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Choose Your Color</label>
+                    <div id="color-picker" class="flex flex-wrap gap-3">
+                        <!-- Swatches will be injected here -->
+                    </div>
+                </div>
+
+                <!-- Create Room -->
+                <div class="border-b border-gray-200 pb-6">
+                    <button id="create-room-button" class="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-4 rounded-md shadow-lg transition duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-opacity-50">
+                        Create New Game
+                    </button>
+                </div>
+
+                <!-- Join Room -->
+                <div class="pt-4 space-y-4">
+                    <p class="text-center text-gray-500 text-sm">...or join an existing game:</p>
+                    <div>
+                        <label for="room-input" class="block text-sm font-medium text-gray-700 mb-1">5-Character Room Code</label>
+                        <input type="text" id="room-input" class="w-full bg-white border border-gray-300 rounded-md p-3 text-gray-900 font-mono uppercase focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="XYZ12" maxlength="5">
+                    </div>
+                    <button id="join-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-md shadow-lg transition duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                        Join Game
+                    </button>
+                </div>
+                
+                <p id="login-error" class="text-red-500 text-center text-sm h-4"></p>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="hidden">
+            <!-- Header -->
+            <div class="bg-white p-4 rounded-lg shadow-lg mb-6 flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0">
+                <div>
+                    <span class="text-sm text-gray-500">Room:</span>
+                    <span id="room-display" class="text-xl font-bold font-mono text-yellow-500"></span>
+                </div>
+                <h2 id="game-status" class="text-2xl font-bold text-center text-cyan-600">Waiting for players...</h2>
+                <div>
+                    <span class="text-sm text-gray-500">Player:</span>
+                    <span id="my-name-display" class="text-xl font-bold text-gray-900"></span>
+                </div>
+            </div>
+
+            <!-- Main Game Layout -->
+            <div class="flex flex-col lg:flex-row gap-6">
+
+                <!-- Left Column (My Grid + Setup) -->
+                <div class="flex-shrink-0 w-full lg:w-auto">
+                    <!-- Setup Controls -->
+                    <div id="setup-controls" class="hidden bg-white p-4 rounded-lg shadow-lg mb-6 text-center">
+                        <h3 id="setup-instructions" class="text-xl font-semibold text-yellow-600">Place your 9 ships on your grid below.</h3>
+                        <p class="text-lg mt-2">Ships Placed: <span id="ships-placed-count" class="font-bold text-2xl">0</span> / 9</p>
+                        <button id="ready-button" disabled class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-md shadow-lg transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                            Ready
+                        </button>
+                    </div>
+
+                    <!-- My Grid Container -->
+                    <div id="my-grid-container" class="bg-white p-4 rounded-lg shadow-lg">
+                        <!-- My Turn Actions (Move Ship) -->
+                        <div id="my-turn-actions" class="hidden mb-4 text-center space-x-4">
+                            <button id="move-ship-button" class="bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md shadow-md transition duration-200">
+                                Move a Ship (Costs Turn)
+                            </button>
+                            <button id="cancel-move-button" class="hidden bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-200">
+                                Cancel Move
+                            </button>
+                        </div>
+
+                        <!-- My grid will be inserted here -->
+                    </div>
+
+                     <!-- Game Log (Mobile) -->
+                    <div class="mt-6 lg:hidden">
+                        <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log</h3>
+                        <div id="game-log-container-mobile" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
+                            <!-- Log messages will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column (Opponent Grids + Log) -->
+                <div class="flex-grow min-w-0">
+                    <div class="bg-white p-4 rounded-lg shadow-lg h-full">
+                        <h3 class="text-2xl font-bold text-gray-800 mb-4">Opponents</h3>
+                        <!-- Opponent Grids Area -->
+                        <div id="opponent-grids-container" class="flex flex-wrap justify-center lg:justify-start gap-4 max-h-[60vh] lg:max-h-[calc(100vh-300px)] overflow-y-auto p-2 bg-gray-50 rounded-md">
+                            <!-- Opponent grids will be inserted here -->
+                        </div>
+
+                         <!-- Game Log (Desktop) -->
+                        <div class="mt-6 hidden lg:block">
+                            <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log</h3>
+                            <div id="game-log-container-desktop" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
+                                <!-- Log messages will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Start Game Button (for waiting room) -->
+            <div id="waiting-room-controls" class="bg-white p-6 rounded-lg shadow-lg text-center mt-6">
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">Waiting Room</h3>
+                <div id="player-list-container" class="flex flex-wrap justify-center gap-4 mb-6">
+                    <!-- Player list will be inserted here -->
+                </div>
+                <button id="start-game-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
+                    Start Game
+                </button>
+                <p id="start-game-error" class="text-red-500 text-sm mt-2 h-4"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Message Modal -->
+    <div id="message-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl p-8 max-w-sm w-full text-center">
+            <p id="message-text" class="text-xl text-gray-800 mb-6">This is a message.</p>
+            <button id="message-ok-button" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-6 rounded-md">
+                OK
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="game-over-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl p-12 text-center">
+            <h2 class="text-5xl font-bold text-yellow-500 mb-6">Game Over!</h2>
+            <p class="text-3xl text-gray-800 mb-8">
+                Winner: <span id="winner-name" class="font-bold text-cyan-600"></span>
+            </p>
+            <button id="play-again-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
+                Play Again
+            </button>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            getDoc, 
+            setDoc, 
+            updateDoc, 
+            onSnapshot, 
+            arrayUnion, 
+            serverTimestamp,
+            setLogLevel
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Game Constants ---
+        const GRID_SIZE = 6;
+        const SHIP_COUNT = 9;
+        const MAX_PLAYERS = 20;
+
+        // --- Global Variables ---
+        let app, db, auth;
+        let userId, myPlayerName, currentRoomCode;
+        let localGameData = null;
+        let unsubscribeRoom = null;
+        let myPlayerColor = '#A1C9F4'; // Default color
+        let isMovingShip = false;      // State for moving a ship
+        let shipToMoveIndex = null;  // Index of the ship being moved
+
+        // Pastel colors (Reds/Pinks removed as requested)
+        const PLAYER_COLORS = [
+            '#A1C9F4', // Pastel Blue
+            '#FFB482', // Pastel Orange
+            '#8DE5A1', // Pastel Green
+            '#D0BBFF', // Pastel Purple
+            '#FFD685', // Pastel Yellow
+            '#B3E8E5', // Pastel Teal
+            '#C3AAD6', // Lavender
+            '#B4E4A0', // Light Green
+            '#FFDAC1', // Peach
+            '#A7D7C5', // Mint
+            '#C1E1C1', // Pistachio
+            '#CFB7A7', // Khaki
+            '#B2D7D9', // Powder Blue
+            '#E0BBE4', // Thistle
+            '#95E1D3', // Turquoise Green
+            '#FDEEAA', // Buttercream
+            '#D4F0F0', // Light Cyan
+        ];
+
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBaNyxRMOTb7a-NYu7Y1J1Q4pSweC-qZUQ",
+            authDomain: "battleship-royal.firebaseapp.com",
+            projectId: "battleship-royal",
+            storageBucket: "battleship-royal.firebasestorage.app",
+            messagingSenderId: "246405120799",
+            appId: "1:246405120799:web:1ac4da9d7c951dfa96262a"
+        };
+        
+        // This is a unique ID for your app's data in the database.
+        const appId = 'battleship-royale-local'; 
+
+        // --- DOM Elements ---
+        const loadingScreen = document.getElementById('loading-screen');
+        const loginScreen = document.getElementById('login-screen');
+        const gameScreen = document.getElementById('game-screen');
+        
+        const nameInput = document.getElementById('name-input');
+        const roomInput = document.getElementById('room-input');
+        const joinButton = document.getElementById('join-button');
+        const createRoomButton = document.getElementById('create-room-button');
+        const loginError = document.getElementById('login-error');
+        const colorPicker = document.getElementById('color-picker');
+
+        const roomDisplay = document.getElementById('room-display');
+        const gameStatus = document.getElementById('game-status');
+        const myNameDisplay = document.getElementById('my-name-display');
+        
+        const setupControls = document.getElementById('setup-controls');
+        const setupInstructions = document.getElementById('setup-instructions');
+        const shipsPlacedCount = document.getElementById('ships-placed-count');
+        const readyButton = document.getElementById('ready-button');
+        
+        const myGridContainer = document.getElementById('my-grid-container');
+        const opponentGridsContainer = document.getElementById('opponent-grids-container');
+        const gameLogContainerDesktop = document.getElementById('game-log-container-desktop');
+        const gameLogContainerMobile = document.getElementById('game-log-container-mobile');
+
+        const myTurnActions = document.getElementById('my-turn-actions');
+        const moveShipButton = document.getElementById('move-ship-button');
+        const cancelMoveButton = document.getElementById('cancel-move-button');
+        
+        const waitingRoomControls = document.getElementById('waiting-room-controls');
+        const playerListContainer = document.getElementById('player-list-container');
+        const startGameButton = document.getElementById('start-game-button');
+        const startGameError = document.getElementById('start-game-error');
+        
+        const messageModal = document.getElementById('message-modal');
+        const messageText = document.getElementById('message-text');
+        const messageOkButton = document.getElementById('message-ok-button');
+        
+        const gameOverModal = document.getElementById('game-over-modal');
+        const winnerName = document.getElementById('winner-name');
+        const playAgainButton = document.getElementById('play-again-button');
+
+        // --- Utility Functions ---
+
+        /**
+         * Shows a custom modal message.
+         * @param {string} message - The message to display.
+         */
+        function showMessage(message) {
+            messageText.textContent = message;
+            messageModal.classList.remove('hidden');
+        }
+
+        /**
+         * Generates a random, uppercase, alphanumeric room code.
+         * @param {number} length - The desired length of the code.
+         * @returns {string} - The generated room code.
+         */
+        function generateRoomCode(length) {
+            const chars = 'ABCDEFGHIJKLMNPQRSTUVWXYZ123456789'; // Omitted O and 0 for clarity
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        /**
+         * Gets the Firestore path for the current room.
+         * @returns {string} - The document path.
+         */
+        function getRoomPath() {
+            return `artifacts/${appId}/public/data/battleship_rooms/${currentRoomCode}`;
+        }
+
+        /**
+         * Converts row and column to a 0-35 index.
+         * @param {number} row - The row (0-5).
+         * @param {number} col - The column (0-5).
+         * @returns {number} - The grid index (0-35).
+         */
+        function toIndex(row, col) {
+            return row * GRID_SIZE + col;
+        }
+
+        /**
+         * Creates a new player object.
+         * @returns {object} - The player object.
+         */
+        function createNewPlayer() {
+            return {
+                userId: userId,
+                name: myPlayerName,
+                color: myPlayerColor,
+                // 0: empty
+                // 1: ship
+                // { type: 'miss', attackerId: '...', attackerColor: '...' }
+                // { type: 'hit', attackerId: '...', attackerColor: '...' }
+                grid: Array(GRID_SIZE * GRID_SIZE).fill(0),
+                shipsPlaced: 0,
+                shipsLeft: SHIP_COUNT, // <-- UPDATED
+                isOut: false,
+                ready: false 
+            };
+        }
+
+        /**
+         * Creates the HTML for a single player's grid.
+         * @param {object} player - The player data object.
+         * @param {boolean} isMe - Is this grid for the current user?
+         * @param {boolean} isTurnActive - Is it my turn and this is an opponent?
+         * @returns {string} - The HTML string for the grid.
+         */
+        function createGridHTML(player, isMe, isTurnActive = false) {
+            const gridClasses = isMe ? 'my-grid' : 'opponent-grid' + (isTurnActive ? ' turn-active' : '');
+            let cellsHTML = '';
+            
+            // Add column headers
+            cellsHTML += '<div class="grid-label"></div>'; // Empty corner
+            for (let c = 1; c <= GRID_SIZE; c++) {
+                cellsHTML += `<div class="grid-label">${c}</div>`;
+            }
+
+            // Add rows with headers
+            const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F']; // <-- UPDATED
+            for (let r = 0; r < GRID_SIZE; r++) {
+                cellsHTML += `<div class="grid-label">${rowLabels[r]}</div>`; // Row header
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const i = toIndex(r, c);
+                    const cellState = player.grid[i];
+                    let cellClass = 'grid-cell';
+                    let content = '';
+                    let style = '';
+
+                    if (isMe) {
+                        // My Grid: Show everything
+                        if (cellState === 1) cellClass += ' ship';
+                        if (typeof cellState === 'object') {
+                            if (cellState.type === 'miss') {
+                                cellClass += ' miss';
+                                content = 'X';
+                                style = `color: ${cellState.attackerColor};`;
+                            } else if (cellState.type === 'hit') {
+                                cellClass += ' hit';
+                                content = '🚢';
+                                style = `background-color: ${cellState.attackerColor};`;
+                            }
+                        }
+                        // Show highlight if selected for moving
+                        if (isMovingShip && i === shipToMoveIndex) {
+                            cellClass += ' ship-selected-for-move';
+                        }
+                    } else {
+                        // Opponent Grid: Show only hits and misses
+                        if (typeof cellState === 'object') {
+                             if (cellState.type === 'miss') {
+                                cellClass += ' miss';
+                                content = 'X';
+                                style = `color: ${cellState.attackerColor};`;
+                            } else if (cellState.type === 'hit') {
+                                cellClass += ' hit';
+                                content = '🚢';
+                                style = `background-color: ${cellState.attackerColor};`;
+                            }
+                        }
+                    }
+                    
+                    cellsHTML += `<div class="${cellClass}" data-player-id="${player.userId}" data-row="${r}" data-col="${c}" style="${style}">${content}</div>`;
+                }
+            }
+
+            return `
+                <div class="p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
+                    <h3 class="font-bold text-lg text-center mb-2" style="color: ${player.color};">${player.name}</h3>
+                    <p class="text-center text-sm text-gray-600 mb-3">Ships Left: ${player.shipsLeft}</p>
+                    <div class="grid-wrapper">
+                        ${cellsHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Creates an "Eliminated Player" card.
+         * @param {object} player - The eliminated player object.
+         * @returns {string} - The HTML string for the card.
+         */
+        function createPlayerOutHTML(player) {
+            // Sizing: (7 cells * 35px) + (6 gaps * 2px) + (2 paddings * 16px) = 245 + 12 + 32 = 289px.
+            // My grid is 289px wide.
+            // Height: 289px + 32px (name) + 20px (ships) + 24px (margins) = 365px.
+            // Let's use w-[289px] h-[385px]
+            return `
+                <div class="p-4 rounded-lg shadow-md player-out-card w-[289px] h-[385px]">
+                    <h3 class="font-bold text-lg text-center mb-3 text-gray-500">${player.name}</h3>
+                    <p class="text-2xl text-red-500 font-bold">ELIMINATED</p>
+                </div>
+            `;
+        }
+        
+        // --- Main UI Render Function ---
+
+        /**
+         * Renders the entire game UI based on the current game state.
+         * @param {object} roomData - The data from Firestore.
+         */
+        function renderGameUI(roomData) {
+            if (!roomData) return;
+            
+            const myPlayer = roomData.players.find(p => p.userId === userId);
+            if (!myPlayer) {
+                showLoginScreen();
+                return;
+            }
+            
+            // Update header
+            roomDisplay.textContent = currentRoomCode;
+            myNameDisplay.textContent = myPlayerName;
+            
+            // Clear main containers
+            myGridContainer.innerHTML = ''; // Will be re-filled
+            opponentGridsContainer.innerHTML = '';
+            gameLogContainerDesktop.innerHTML = '';
+            gameLogContainerMobile.innerHTML = '';
+            playerListContainer.innerHTML = '';
+            
+            // Hide all conditional controls
+            setupControls.classList.add('hidden');
+            waitingRoomControls.classList.add('hidden');
+            gameOverModal.classList.add('hidden');
+            myTurnActions.classList.add('hidden');
+            
+            // Render Game Log
+            roomData.gameLog.slice().reverse().forEach(msg => {
+                const p = document.createElement('p');
+                p.textContent = msg;
+                p.className = 'text-sm text-gray-600';
+                
+                const p2 = p.cloneNode(true);
+                gameLogContainerDesktop.appendChild(p);
+                gameLogContainerMobile.appendChild(p2);
+            });
+
+            // --- State Machine ---
+            switch (roomData.gameState) {
+                case "waiting":
+                    gameStatus.textContent = "Waiting for Players... (Share Code!)";
+                    waitingRoomControls.classList.remove('hidden');
+                    
+                    roomData.players.forEach(player => {
+                        const playerCard = `
+                            <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center">
+                                <h3 class="font-bold text-xl" style="color: ${player.color};">${player.name}</h3>
+                            </div>
+                        `;
+                        playerListContainer.innerHTML += playerCard;
+                    });
+                    break;
+
+                case "setup":
+                    gameStatus.textContent = "Place Your Ships!";
+                    setupControls.classList.remove('hidden');
+                    
+                    shipsPlacedCount.textContent = myPlayer.shipsPlaced;
+                    readyButton.disabled = (myPlayer.shipsPlaced !== SHIP_COUNT) || myPlayer.ready;
+                    if(myPlayer.ready) {
+                        setupInstructions.textContent = "Waiting for other players to get ready...";
+                    } else {
+                        setupInstructions.textContent = `Place your ${SHIP_COUNT} ships on your grid below.`;
+                    }
+                    myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
+                    break;
+                    
+                case "playing":
+                    const currentPlayer = roomData.players[roomData.currentPlayerIndex];
+                    const isMyTurn = currentPlayer.userId === userId;
+                    
+                    // Handle "Move Ship" state
+                    if (isMyTurn && isMovingShip) {
+                        gameStatus.textContent = shipToMoveIndex === null ? "Move: Select an un-hit ship." : "Move: Select an empty cell.";
+                        gameStatus.classList.add('text-yellow-500');
+                        myTurnActions.classList.remove('hidden');
+                        moveShipButton.classList.add('hidden');
+                        cancelMoveButton.classList.remove('hidden');
+                        opponentGridsContainer.style.pointerEvents = 'none'; // Disable attacking
+                    } else if (isMyTurn && !isMovingShip) {
+                        gameStatus.textContent = "Your Turn! Attack!";
+                        gameStatus.classList.add('text-yellow-500');
+                        myTurnActions.classList.remove('hidden');
+                        moveShipButton.classList.remove('hidden');
+                        cancelMoveButton.classList.add('hidden');
+                        opponentGridsContainer.style.pointerEvents = 'auto';
+                    } else { // Not my turn
+                        gameStatus.textContent = `Waiting for ${currentPlayer.name}'s turn...`;
+                        gameStatus.classList.remove('text-yellow-500');
+                        if (isMovingShip) cancelMove(); // Reset move state if turn passed
+                    }
+                    
+                    // Render my grid (Must be after "Move Ship" logic to get highlights)
+                    myGridContainer.prepend(myTurnActions); // Re-insert actions
+                    myGridContainer.innerHTML += createGridHTML(myPlayer, true, false);
+
+                    // Render opponent grids
+                    roomData.players.forEach(player => {
+                        if (player.userId === userId) return; 
+                        if (player.isOut) {
+                            opponentGridsContainer.innerHTML += createPlayerOutHTML(player);
+                        } else {
+                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn);
+                        }
+                    });
+                    break;
+                    
+                case "over":
+                    const winner = roomData.players.find(p => p.userId === roomData.winner);
+                    gameStatus.textContent = "Game Over!";
+                    winnerName.textContent = winner ? winner.name : 'Unknown';
+                    gameOverModal.classList.remove('hidden');
+                    
+                    myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
+                    roomData.players.forEach(player => {
+                         if (player.userId === userId) return;
+                         opponentGridsContainer.innerHTML += createGridHTML(player, false, false);
+                    });
+                    break;
+            }
+        }
+        
+        // --- Event Handlers ---
+
+        function handleColorPick(e) {
+            if (!e.target.matches('.color-swatch')) return;
+            document.querySelectorAll('.color-swatch').forEach(swatch => {
+                swatch.classList.remove('selected');
+            });
+            const selectedSwatch = e.target;
+            selectedSwatch.classList.add('selected');
+            myPlayerColor = selectedSwatch.dataset.color;
+        }
+
+        async function handleCreateRoom() {
+            const name = nameInput.value.trim();
+            if (!name) {
+                loginError.textContent = "Please enter your name.";
+                return;
+            }
+            loginError.textContent = "";
+            createRoomButton.disabled = true;
+            createRoomButton.textContent = "Creating...";
+            joinButton.disabled = true; 
+
+            myPlayerName = name;
+            let newRoomCode = '';
+            let roomRef;
+            let roomSnap;
+            let attempts = 0;
+
+            do {
+                newRoomCode = generateRoomCode(5);
+                currentRoomCode = newRoomCode; 
+                roomRef = doc(db, getRoomPath());
+                roomSnap = await getDoc(roomRef);
+                attempts++;
+                if (attempts > 10) { 
+                    throw new Error("Failed to generate a unique room code.");
+                }
+            } while (roomSnap.exists());
+
+            console.log(`Creating new room: ${newRoomCode}`);
+
+            try {
+                const newPlayer = createNewPlayer();
+                const newRoomData = {
+                    players: [newPlayer],
+                    gameState: "waiting", 
+                    currentPlayerIndex: 0,
+                    gameLog: [`${myPlayerName} created the room.`],
+                    createdAt: serverTimestamp(),
+                    winner: null
+                };
+                await setDoc(roomRef, newRoomData);
+                showGameScreen();
+                listenToRoom();
+
+            } catch (err) {
+                console.error("Error creating room:", err);
+                loginError.textContent = err.message;
+                createRoomButton.disabled = false;
+                createRoomButton.textContent = "Create New Game";
+                joinButton.disabled = false;
+            }
+        }
+
+        async function handleJoinRoom() {
+            const name = nameInput.value.trim();
+            const roomCode = roomInput.value.trim().toUpperCase();
+
+            if (!name) {
+                loginError.textContent = "Please enter your name.";
+                return;
+            }
+            if (roomCode.length !== 5) {
+                loginError.textContent = "Room code must be 5 characters.";
+                return;
+            }
+            
+            loginError.textContent = "";
+            joinButton.disabled = true;
+            joinButton.textContent = "Joining...";
+            createRoomButton.disabled = true; 
+
+            myPlayerName = name;
+            currentRoomCode = roomCode;
+            
+            const roomRef = doc(db, getRoomPath());
+            
+            try {
+                const roomSnap = await getDoc(roomRef);
+                
+                if (!roomSnap.exists()) {
+                    throw new Error("Room not found. Check the code.");
+                } else {
+                    const roomData = roomSnap.data();
+                    
+                    if (roomData.players.find(p => p.userId === userId)) {
+                        const newPlayers = roomData.players.map(p => 
+                            p.userId === userId ? { ...p, name: myPlayerName, color: myPlayerColor } : p
+                        );
+                        await updateDoc(roomRef, { players: newPlayers });
+                    } else {
+                        if (roomData.players.length >= MAX_PLAYERS) { // <-- UPDATED LIMIT
+                            throw new Error(`Room is full (max ${MAX_PLAYERS} players).`);
+                        }
+                        if (roomData.gameState !== "waiting") {
+                            throw new Error("Game is already in progress.");
+                        }
+                        
+                        const newPlayer = createNewPlayer();
+                        await updateDoc(roomRef, {
+                            players: arrayUnion(newPlayer),
+                            gameLog: arrayUnion(`${myPlayerName} joined the room.`)
+                        });
+                    }
+                }
+                
+                showGameScreen();
+                listenToRoom();
+                
+            } catch (err) {
+                console.error("Error joining room:", err);
+                loginError.textContent = err.message;
+                joinButton.disabled = false;
+                joinButton.textContent = "Join Game";
+                createRoomButton.disabled = false;
+            }
+        }
+        
+        async function handleStartGame() {
+            if (!localGameData) return;
+            if (localGameData.players.length < 2) {
+                startGameError.textContent = "Need at least 2 players to start.";
+                return;
+            }
+            
+            startGameError.textContent = "";
+            startGameButton.disabled = true;
+            
+            const roomRef = doc(db, getRoomPath());
+            try {
+                await updateDoc(roomRef, {
+                    gameState: "setup",
+                    gameLog: arrayUnion("The game is starting! Place your ships.")
+                });
+            } catch (err) {
+                console.error("Error starting game:", err);
+                startGameError.textContent = "Error starting game. Please try again.";
+                startGameButton.disabled = false;
+            }
+        }
+        
+        /**
+         * Handles clicking on a grid cell (for setup, moving, or attacking).
+         * @param {Event} e - The click event.
+         */
+        function handleGridClick(e) {
+            const cellEl = e.target.closest('.grid-cell');
+            if (!cellEl) return;
+            if (!localGameData) return;
+            
+            const row = parseInt(cellEl.dataset.row);
+            const col = parseInt(cellEl.dataset.col);
+            if (isNaN(row) || isNaN(col)) return; // Clicked on a label
+            
+            const index = toIndex(row, col);
+
+            // --- Move Ship Logic ---
+            // This runs only if we are in the "playing" state AND isMovingShip is true
+            if (localGameData.gameState === 'playing' && isMovingShip) {
+                if (!cellEl.closest('.my-grid')) return; // Can only move on my grid
+                
+                const myPlayer = localGameData.players.find(p => p.userId === userId);
+                
+                if (shipToMoveIndex === null) {
+                    // --- 1. Selecting the ship to move ---
+                    if (myPlayer.grid[index] === 1) { // It's an un-hit ship
+                        shipToMoveIndex = index;
+                        cellEl.classList.add('ship-selected-for-move'); // Add visual highlight
+                        gameStatus.textContent = "Move: Select an empty cell.";
+                    } else {
+                        showMessage("You must select one of your un-hit ships (dark gray squares).");
+                    }
+                } else {
+                    // --- 2. Selecting the destination ---
+                    if (myPlayer.grid[index] === 0) { // It's an empty cell
+                        handleConfirmMove(shipToMoveIndex, index);
+                    } else if (index === shipToMoveIndex) {
+                        // Clicked same ship, de-select it
+                        shipToMoveIndex = null;
+                        cellEl.classList.remove('ship-selected-for-move');
+                        gameStatus.textContent = "Move: Select an un-hit ship.";
+                    } else {
+                        showMessage("You must select an empty cell (light blue) as the destination.");
+                    }
+                }
+                return; // End click handler here, don't fall through
+            }
+
+            // --- Setup Logic ---
+            if (localGameData.gameState === 'setup') {
+                const myPlayer = localGameData.players.find(p => p.userId === userId);
+                if (myPlayer.ready) return; 
+                if (cellEl.closest('.my-grid')) {
+                    handleSetupClick(index);
+                }
+            } 
+            // --- Attack Logic ---
+            else if (localGameData.gameState === 'playing') {
+                const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
+                if (currentPlayer.userId !== userId) {
+                    showMessage("It's not your turn!");
+                    return;
+                }
+                if (cellEl.closest('.opponent-grid')) {
+                    handleAttackClick(cellEl.dataset.playerId, index);
+                }
+            }
+        }
+
+        /**
+         * Handles placing/removing a ship during setup.
+         * @param {number} index - The cell index clicked (0-35).
+         */
+        async function handleSetupClick(index) {
+            const myPlayer = localGameData.players.find(p => p.userId === userId);
+            let newGrid = [...myPlayer.grid];
+            let newShipsPlaced = myPlayer.shipsPlaced;
+            
+            if (newGrid[index] === 0 && newShipsPlaced < SHIP_COUNT) {
+                newGrid[index] = 1;
+                newShipsPlaced++;
+            } else if (newGrid[index] === 1) {
+                newGrid[index] = 0;
+                newShipsPlaced--;
+            } else {
+                return; 
+            }
+            
+            const newPlayers = localGameData.players.map(p => 
+                p.userId === userId ? { ...p, grid: newGrid, shipsPlaced: newShipsPlaced } : p
+            );
+            
+            const roomRef = doc(db, getRoomPath());
+            try {
+                await updateDoc(roomRef, { players: newPlayers });
+            } catch (err) {
+                console.error("Error placing ship:", err);
+                showMessage("Error placing ship. Please try again.");
+            }
+        }
+
+        /**
+         * Handles the "Ready" button click.
+         */
+        async function handleReadyClick() {
+            readyButton.disabled = true;
+            
+            const myPlayer = localGameData.players.find(p => p.userId === userId);
+            if (myPlayer.shipsPlaced !== SHIP_COUNT) { // Final check
+                 showMessage(`You must place all ${SHIP_COUNT} ships.`);
+                 readyButton.disabled = false;
+                 return;
+            }
+
+            const newPlayers = localGameData.players.map(p =>
+                p.userId === userId ? { ...p, ready: true } : p
+            );
+            
+            const allReady = newPlayers.every(p => p.ready);
+            
+            const roomRef = doc(db, getRoomPath());
+            try {
+                if (allReady) {
+                    await updateDoc(roomRef, {
+                        players: newPlayers,
+                        gameState: "playing",
+                        currentPlayerIndex: 0, 
+                        gameLog: arrayUnion("All players are ready! The battle begins!")
+                    });
+                } else {
+                    await updateDoc(roomRef, { players: newPlayers });
+                }
+            } catch (err) {
+                console.error("Error setting ready status:", err);
+                showMessage("Error. Please try again.");
+                readyButton.disabled = false;
+            }
+        }
+
+        /**
+         * Handles an attack on an opponent.
+         * @param {string} targetPlayerId - The ID of the player being attacked.
+         * @param {number} cellIndex - The cell index being attacked (0-35).
+         */
+        async function handleAttackClick(targetPlayerId, cellIndex) {
+            // Cancel any move state just in case
+            cancelMove();
+
+            // Prevent multiple clicks by disabling grid
+            opponentGridsContainer.style.pointerEvents = 'none';
+
+            const attacker = localGameData.players[localGameData.currentPlayerIndex];
+            const targetPlayer = localGameData.players.find(p => p.userId === targetPlayerId);
+            
+            if (typeof targetPlayer.grid[cellIndex] === 'object') {
+                showMessage("That position has already been attacked!");
+                opponentGridsContainer.style.pointerEvents = 'auto'; // Re-enable grid
+                return;
+            }
+            
+            const wasHit = targetPlayer.grid[cellIndex] === 1;
+            let logMsg = `${attacker.name} attacked ${targetPlayer.name}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}`;
+            let newLogMessages = [logMsg];
+            
+            let newPlayers = [...localGameData.players];
+            let newGameState = localGameData.gameState;
+            let newWinner = null;
+            let nextPlayerIndex = localGameData.currentPlayerIndex;
+
+            // 1. Update target player
+            const newGrid = [...targetPlayer.grid];
+            if (wasHit) {
+                newGrid[cellIndex] = { type: 'hit', attackerId: attacker.userId, attackerColor: attacker.color };
+            } else {
+                newGrid[cellIndex] = { type: 'miss', attackerId: attacker.userId, attackerColor: attacker.color };
+            }
+            
+            let newShipsLeft = targetPlayer.shipsLeft;
+            let newIsOut = targetPlayer.isOut;
+
+            if (wasHit) {
+                newShipsLeft--;
+                if (newShipsLeft === 0) {
+                    newIsOut = true;
+                    newLogMessages.push(`${targetPlayer.name} has been eliminated!`);
+                }
+            }
+            
+            newPlayers = newPlayers.map(p => 
+                p.userId === targetPlayerId ? { ...p, grid: newGrid, shipsLeft: newShipsLeft, isOut: newIsOut } : p
+            );
+
+            // 2. Check for game over
+            const playersStillIn = newPlayers.filter(p => !p.isOut);
+            if (playersStillIn.length === 1) {
+                newGameState = "over";
+                newWinner = playersStillIn[0].userId;
+                newLogMessages.push(`GAME OVER! ${playersStillIn[0].name} is the winner!`);
+            } else if (playersStillIn.length === 0) {
+                newGameState = "over";
+                newLogMessages.push("GAME OVER! It's a draw!");
+            }
+            
+            // 3. Determine next turn
+            if (newGameState === "playing" && !wasHit) {
+                // Miss: Advance turn, skipping any "out" players
+                do {
+                    nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
+                } while (newPlayers[nextPlayerIndex].isOut);
+            }
+            // If it was a hit, nextPlayerIndex remains the same (extra turn)
+
+            const roomRef = doc(db, getRoomPath());
+            try {
+                await updateDoc(roomRef, {
+                    players: newPlayers,
+                    gameState: newGameState,
+                    winner: newWinner,
+                    currentPlayerIndex: nextPlayerIndex,
+                    gameLog: arrayUnion(...newLogMessages) 
+                });
+            } catch (err) {
+                console.error("Error during attack:", err);
+                showMessage("Error processing attack. Please try again.");
+            } finally {
+                setTimeout(() => {
+                     opponentGridsContainer.style.pointerEvents = 'auto';
+                }, 500);
+            }
+        }
+        
+        // --- NEW: Ship Moving Functions ---
+
+        /**
+         * Initiates the "Move Ship" state.
+         */
+        function handleMoveShipClick() {
+            isMovingShip = true;
+            shipToMoveIndex = null;
+            // Re-render to show new UI state
+            renderGameUI(localGameData);
+        }
+
+        /**
+         * Cancels the "Move Ship" state.
+         */
+        function cancelMove() {
+            // De-select any highlighted cell
+            const selected = document.querySelector('.ship-selected-for-move');
+            if(selected) selected.classList.remove('ship-selected-for-move');
+
+            isMovingShip = false;
+            shipToMoveIndex = null;
+            
+            // Re-render to restore original UI
+            if (localGameData) {
+                renderGameUI(localGameData);
+            }
+        }
+
+        /**
+         * Confirms the ship move and writes to Firestore.
+         * @param {number} fromIndex - The grid index to move from.
+         * @param {number} toIndex - The grid index to move to.
+         */
+        async function handleConfirmMove(fromIndex, toIndex) {
+            // Disable UI
+            gameStatus.textContent = "Moving ship...";
+            myTurnActions.classList.add('hidden');
+            myGridContainer.style.pointerEvents = 'none';
+
+            const myPlayer = localGameData.players.find(p => p.userId === userId);
+            let newGrid = [...myPlayer.grid];
+            newGrid[fromIndex] = 0; // Empty old spot
+            newGrid[toIndex] = 1;   // Place in new spot
+
+            let newPlayers = localGameData.players.map(p => 
+                p.userId === userId ? { ...p, grid: newGrid } : p
+            );
+            
+            let newLogMessages = [`${myPlayer.name} moved a ship.`];
+
+            // This action costs a turn, so find next player
+            let nextPlayerIndex = localGameData.currentPlayerIndex;
+            do {
+                nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
+            } while (newPlayers[nextPlayerIndex].isOut);
+
+            const roomRef = doc(db, getRoomPath());
+            try {
+                await updateDoc(roomRef, {
+                    players: newPlayers,
+                    currentPlayerIndex: nextPlayerIndex,
+                    gameLog: arrayUnion(...newLogMessages)
+                });
+            } catch (err) {
+                console.error("Error moving ship:", err);
+                showMessage("Error moving ship. Please try again.");
+            } finally {
+                // Reset state and re-enable UI (Firestore snapshot will do most of this)
+                myGridContainer.style.pointerEvents = 'auto';
+                cancelMove();
+            }
+        }
+
+
+        // --- Screen Management ---
+        
+        function showLoginScreen() {
+            loadingScreen.classList.add('hidden');
+            gameScreen.classList.add('hidden');
+            loginScreen.classList.remove('hidden');
+            
+            if (unsubscribeRoom) {
+                unsubscribeRoom();
+                unsubscribeRoom = null;
+            }
+            localGameData = null;
+            currentRoomCode = null;
+            cancelMove(); // Reset move state
+            
+            joinButton.disabled = false;
+            joinButton.textContent = "Join Game";
+            createRoomButton.disabled = false;
+            createRoomButton.textContent = "Create New Game";
+        }
+        
+        function showGameScreen() {
+            loadingScreen.classList.add('hidden');
+            loginScreen.classList.add('hidden');
+            gameScreen.classList.remove('hidden');
+        }
+
+        function initColorPicker() {
+            PLAYER_COLORS.forEach((color, index) => {
+                const swatch = document.createElement('div');
+                swatch.className = 'color-swatch';
+                swatch.style.backgroundColor = color;
+                swatch.dataset.color = color;
+                if (index === 0) {
+                    swatch.classList.add('selected');
+                    myPlayerColor = color;
+                }
+                colorPicker.appendChild(swatch);
+            });
+            colorPicker.addEventListener('click', handleColorPick);
+        }
+
+        // --- Firebase Initialization ---
+
+        async function signIn() {
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Firebase Sign-In Error:", error);
+                loadingScreen.innerHTML = "<h1>Auth Error</h1><p>Could not sign in. Check console and Firebase settings.</p>";
+            }
+        }
+
+        function listenToRoom() {
+            if (unsubscribeRoom) {
+                unsubscribeRoom();
+            }
+            
+            const roomRef = doc(db, getRoomPath());
+            unsubscribeRoom = onSnapshot(roomRef, (doc) => {
+                if (doc.exists()) {
+                    const oldState = localGameData ? localGameData.gameState : null;
+                    localGameData = doc.data();
+                    
+                    // Re-enable grid clicks on any state update
+                    opponentGridsContainer.style.pointerEvents = 'auto';
+                    myGridContainer.style.pointerEvents = 'auto';
+                    
+                    renderGameUI(localGameData);
+
+                    if (oldState !== 'over' && localGameData.gameState === 'over') {
+                        setTimeout(() => {
+                            gameOverModal.classList.remove('hidden');
+                        }, 1000);
+                    }
+                } else {
+                    showMessage("The game room no longer exists.");
+                    showLoginScreen();
+                }
+            }, (error) => {
+                console.error("Firestore Snapshot Error:", error);
+                showMessage("Lost connection to game room.");
+                showLoginScreen();
+            });
+        }
+        
+        window.onload = () => {
+            if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+                 loadingScreen.innerHTML = "<h1>Error</h1><p>Firebase is not configured. Please paste your `firebaseConfig` object into the script.</p>";
+                return;
+            }
+            
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('debug'); 
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Authenticated with userId:", userId);
+                        initColorPicker();
+                        showLoginScreen(); 
+                    } else {
+                        console.log("User is not authenticated. Attempting sign-in...");
+                        signIn();
+                    }
+                });
+
+                // --- Bind Event Listeners ---
+                createRoomButton.addEventListener('click', handleCreateRoom);
+                joinButton.addEventListener('click', handleJoinRoom);
+                startGameButton.addEventListener('click', handleStartGame);
+                
+                myGridContainer.addEventListener('click', handleGridClick);
+                opponentGridsContainer.addEventListener('click', handleGridClick);
+                
+                readyButton.addEventListener('click', handleReadyClick);
+                moveShipButton.addEventListener('click', handleMoveShipClick);
+                cancelMoveButton.addEventListener('click', cancelMove);
+                
+                messageOkButton.addEventListener('click', () => {
+                    messageModal.classList.add('hidden');
+                });
+                
+                playAgainButton.addEventListener('click', () => {
+                    window.location.reload();
+                });
+
+                roomInput.addEventListener('keyup', (e) => {
+                    if (e.key === 'Enter') joinButton.click();
+                });
+
+            } catch (err) {
+                console.error("Firebase Init Error:", err);
+                loadingScreen.innerHTML = "<h1>Error</h1><p>Could not initialize the application.</p>";
+            }
+        };
+
+    </script>
+</body>
+</html>
+
