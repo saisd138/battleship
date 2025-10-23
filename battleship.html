@@ -245,8 +245,8 @@
                     <div id="my-grid-container" class="bg-white p-4 rounded-lg shadow-lg">
                         <!-- My Turn Actions (Move Ship) -->
                         <div id="my-turn-actions" class="hidden mb-4 text-center space-x-4">
-                            <button id="move-ship-button" class="bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md shadow-md transition duration-200">
-                                Move a Ship (Costs Turn)
+                            <button id="move-ship-button" class="bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md shadow-md transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:opacity-50">
+                                Move a Ship (1/turn)
                             </button>
                             <button id="cancel-move-button" class="hidden bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-200">
                                 Cancel Move
@@ -256,10 +256,10 @@
                         <!-- My grid will be inserted here -->
                     </div>
 
-                     <!-- Game Log (Mobile) -->
-                    <div class="mt-6 lg:hidden">
+                     <!-- Game Log (Combined) -->
+                    <div class="mt-6">
                         <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log</h3>
-                        <div id="game-log-container-mobile" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
+                        <div id="game-log-container" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
                             <!-- Log messages will be inserted here -->
                         </div>
                     </div>
@@ -274,13 +274,7 @@
                             <!-- Opponent grids will be inserted here -->
                         </div>
 
-                         <!-- Game Log (Desktop) -->
-                        <div class="mt-6 hidden lg:block">
-                            <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log</h3>
-                            <div id="game-log-container-desktop" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
-                                <!-- Log messages will be inserted here -->
-                            </div>
-                        </div>
+                         <!-- Game Log (Desktop) - REMOVED -->
                     </div>
                 </div>
             </div>
@@ -367,29 +361,29 @@
         let userId, myPlayerName, currentRoomCode;
         let localGameData = null;
         let unsubscribeRoom = null;
-        // let myPlayerColor = '#A1C9F4'; // No longer set here
         let isMovingShip = false;      // State for moving a ship
         let shipToMoveIndex = null;  // Index of the ship being moved
+        let hasMovedShipThisTurn = false; // NEW: Local flag for ship movement
 
-        // Pastel colors (Reds/Pinks removed as requested)
+        // NEW: Darker Pastel colors
         const PLAYER_COLORS = [
-            '#A1C9F4', // Pastel Blue
-            '#FFB482', // Pastel Orange
-            '#8DE5A1', // Pastel Green
-            '#D0BBFF', // Pastel Purple
-            '#FFD685', // Pastel Yellow
-            '#B3E8E5', // Pastel Teal
-            '#C3AAD6', // Lavender
-            '#B4E4A0', // Light Green
-            '#FFDAC1', // Peach
-            '#A7D7C5', // Mint
-            '#C1E1C1', // Pistachio
-            '#CFB7A7', // Khaki
-            '#B2D7D9', // Powder Blue
-            '#E0BBE4', // Thistle
-            '#95E1D3', // Turquoise Green
-            '#FDEEAA', // Buttercream
-            '#D4F0F0', // Light Cyan
+            '#60A5FA', // blue-400
+            '#FB923C', // orange-400
+            '#4ADE80', // green-400
+            '#A78BFA', // violet-400
+            '#FACC15', // yellow-400
+            '#2DD4BF', // teal-400
+            '#C084FC', // purple-400
+            '#84CC16', // lime-500
+            '#F97316', // orange-500
+            '#5EEAD4', // cyan-300
+            '#EC4899', // pink-500
+            '#67CDBB', // Custom
+            '#7BC6CC', // Custom
+            '#D19ED4', // Custom
+            '#6EE7B7', // emerald-300
+            '#FADB5F', // Custom yellow
+            '#99DDE0'  // Custom
         ];
         const DEFAULT_COLOR = '#6b7280'; // Gray
 
@@ -416,7 +410,6 @@
         const joinButton = document.getElementById('join-button');
         const createRoomButton = document.getElementById('create-room-button');
         const loginError = document.getElementById('login-error');
-        // const colorPicker = document.getElementById('color-picker'); // Removed
 
         const roomDisplay = document.getElementById('room-display');
         const gameStatus = document.getElementById('game-status');
@@ -429,8 +422,7 @@
         
         const myGridContainer = document.getElementById('my-grid-container');
         const opponentGridsContainer = document.getElementById('opponent-grids-container');
-        const gameLogContainerDesktop = document.getElementById('game-log-container-desktop');
-        const gameLogContainerMobile = document.getElementById('game-log-container-mobile');
+        const gameLogContainer = document.getElementById('game-log-container'); // Renamed
 
         const myTurnActions = document.getElementById('my-turn-actions');
         const moveShipButton = document.getElementById('move-ship-button');
@@ -438,7 +430,7 @@
         
         const waitingRoomControls = document.getElementById('waiting-room-controls');
         const playerListContainer = document.getElementById('player-list-container');
-        const roomColorPicker = document.getElementById('room-color-picker'); // Added
+        const roomColorPicker = document.getElementById('room-color-picker'); 
         const startGameButton = document.getElementById('start-game-button');
         const startGameError = document.getElementById('start-game-error');
         
@@ -494,6 +486,19 @@
         }
 
         /**
+         * NEW: Converts a grid index to "A1" style coordinates.
+         * @param {number} index - The grid index (0-35).
+         * @returns {string} - The coordinate string (e.g., "A1", "F6").
+         */
+        function toGridCoord(index) {
+            const row = Math.floor(index / GRID_SIZE);
+            const col = index % GRID_SIZE;
+            const rowLabel = ['A', 'B', 'C', 'D', 'E', 'F'][row];
+            const colLabel = col + 1;
+            return `${rowLabel}${colLabel}`;
+        }
+
+        /**
          * Creates a new player object.
          * @returns {object} - The player object.
          */
@@ -501,14 +506,10 @@
             return {
                 userId: userId,
                 name: myPlayerName,
-                color: null, // <-- UPDATED: Color set after joining
-                // 0: empty
-                // 1: ship
-                // { type: 'miss', attackerId: '...', attackerColor: '...' }
-                // { type: 'hit', attackerId: '...', attackerColor: '...' }
+                color: null, // Color set after joining
                 grid: Array(GRID_SIZE * GRID_SIZE).fill(0),
                 shipsPlaced: 0,
-                shipsLeft: SHIP_COUNT, // <-- Uses new constant
+                shipsLeft: SHIP_COUNT, 
                 isOut: false,
                 ready: false 
             };
@@ -606,7 +607,7 @@
         }
 
         /**
-         * NEW: Renders the color picker in the waiting room.
+         * Renders the color picker in the waiting room.
          * @param {object} roomData - The current room data.
          */
         function renderColorPicker(roomData) {
@@ -654,8 +655,7 @@
             // Clear main containers
             myGridContainer.innerHTML = ''; // Will be re-filled
             opponentGridsContainer.innerHTML = '';
-            gameLogContainerDesktop.innerHTML = '';
-            gameLogContainerMobile.innerHTML = '';
+            gameLogContainer.innerHTML = '';
             playerListContainer.innerHTML = '';
             
             // Hide all conditional controls
@@ -669,10 +669,7 @@
                 const p = document.createElement('p');
                 p.textContent = msg;
                 p.className = 'text-sm text-gray-600';
-                
-                const p2 = p.cloneNode(true);
-                gameLogContainerDesktop.appendChild(p);
-                gameLogContainerMobile.appendChild(p2);
+                gameLogContainer.appendChild(p);
             });
 
             // --- State Machine ---
@@ -715,23 +712,33 @@
                     const isMyTurn = currentPlayer.userId === userId;
                     
                     // Handle "Move Ship" state
-                    if (isMyTurn && isMovingShip) {
-                        gameStatus.textContent = shipToMoveIndex === null ? "Move: Select an un-hit ship." : "Move: Select an empty cell.";
-                        gameStatus.classList.add('text-yellow-500');
+                    if (isMyTurn) {
+                        // Reset move flag if turn just started
+                        const oldPlayer = localGameData ? localGameData.players[localGameData.currentPlayerIndex] : null;
+                        if (oldPlayer?.userId !== userId) {
+                            hasMovedShipThisTurn = false;
+                        }
+
                         myTurnActions.classList.remove('hidden');
-                        moveShipButton.classList.add('hidden');
-                        cancelMoveButton.classList.remove('hidden');
-                        opponentGridsContainer.style.pointerEvents = 'none'; // Disable attacking
-                    } else if (isMyTurn && !isMovingShip) {
-                        gameStatus.textContent = "Your Turn! Attack!";
-                        gameStatus.classList.add('text-yellow-500');
-                        myTurnActions.classList.remove('hidden');
-                        moveShipButton.classList.remove('hidden');
-                        cancelMoveButton.classList.add('hidden');
-                        opponentGridsContainer.style.pointerEvents = 'auto';
+                        opponentGridsContainer.style.pointerEvents = 'auto'; // Attack grid is active
+
+                        if (isMovingShip) {
+                            gameStatus.textContent = shipToMoveIndex === null ? "Move: Select an un-hit ship." : "Move: Select an empty cell.";
+                            gameStatus.classList.add('text-yellow-500');
+                            moveShipButton.classList.add('hidden');
+                            cancelMoveButton.classList.remove('hidden');
+                            opponentGridsContainer.style.pointerEvents = 'none'; // Disable attacking
+                        } else {
+                            gameStatus.textContent = "Your Turn! Attack!";
+                            gameStatus.classList.add('text-yellow-500');
+                            moveShipButton.classList.remove('hidden');
+                            cancelMoveButton.classList.add('hidden');
+                            moveShipButton.disabled = hasMovedShipThisTurn;
+                        }
                     } else { // Not my turn
                         gameStatus.textContent = `Waiting for ${currentPlayer.name}'s turn...`;
                         gameStatus.classList.remove('text-yellow-500');
+                        hasMovedShipThisTurn = false; // Reset flag when not my turn
                         if (isMovingShip) cancelMove(); // Reset move state if turn passed
                     }
                     
@@ -745,7 +752,7 @@
                         if (player.isOut) {
                             opponentGridsContainer.innerHTML += createPlayerOutHTML(player);
                         } else {
-                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn);
+                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && !isMovingShip);
                         }
                     });
                     break;
@@ -768,7 +775,7 @@
         // --- Event Handlers ---
 
         /**
-         * NEW: Handles selecting a color in the waiting room.
+         * Handles selecting a color in the waiting room.
          * @param {Event} e - The click event.
          */
         async function handleColorSelectInRoom(e) {
@@ -927,7 +934,7 @@
                 return;
             }
 
-            // NEW: Check if all players have selected a color
+            // Check if all players have selected a color
             if (localGameData.players.some(p => p.color === null)) {
                  startGameError.textContent = "All players must choose a color before starting.";
                  return;
@@ -975,14 +982,26 @@
                     if (myPlayer.grid[index] === 1) { // It's an un-hit ship
                         shipToMoveIndex = index;
                         cellEl.classList.add('ship-selected-for-move'); 
-                        gameStatus.textContent = "Move: Select an empty cell.";
+                        gameStatus.textContent = "Move: Select an adjacent empty cell.";
                     } else {
                         showMessage("You must select one of your un-hit ships (dark gray squares).");
                     }
                 } else {
                     // --- 2. Selecting the destination ---
                     if (myPlayer.grid[index] === 0) { // It's an empty cell
-                        handleConfirmMove(shipToMoveIndex, index);
+                        const fromRow = Math.floor(shipToMoveIndex / GRID_SIZE);
+                        const fromCol = shipToMoveIndex % GRID_SIZE;
+                        const toRow = Math.floor(index / GRID_SIZE);
+                        const toCol = index % GRID_SIZE;
+                        
+                        // Check if it's one cell away (not diagonal)
+                        const isAdjacent = Math.abs(fromRow - toRow) + Math.abs(fromCol - toCol) === 1;
+
+                        if (isAdjacent) {
+                            executeSilentMove(shipToMoveIndex, index);
+                        } else {
+                            showMessage("You can only move one cell (up, down, left, or right).");
+                        }
                     } else if (index === shipToMoveIndex) {
                         // Clicked same ship, de-select it
                         shipToMoveIndex = null;
@@ -1105,7 +1124,9 @@
             }
             
             const wasHit = targetPlayer.grid[cellIndex] === 1;
-            let logMsg = `${attacker.name} attacked ${targetPlayer.name}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}`;
+            // NEW: Add grid coordinate to log message
+            const coord = toGridCoord(cellIndex);
+            let logMsg = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}`;
             let newLogMessages = [logMsg];
             
             let newPlayers = [...localGameData.players];
@@ -1176,28 +1197,38 @@
             }
         }
         
-        // --- NEW: Ship Moving Functions ---
+        // --- REVISED: Ship Moving Functions ---
 
+        /**
+         * Initiates the "Move Ship" state.
+         */
         function handleMoveShipClick() {
             isMovingShip = true;
             shipToMoveIndex = null;
-            renderGameUI(localGameData);
+            renderGameUI(localGameData); // Re-render to show "Cancel" button and update status
         }
 
+        /**
+         * Cancels the "Move Ship" state.
+         */
         function cancelMove() {
             const selected = document.querySelector('.ship-selected-for-move');
             if(selected) selected.classList.remove('ship-selected-for-move');
             isMovingShip = false;
             shipToMoveIndex = null;
             if (localGameData) {
-                renderGameUI(localGameData);
+                renderGameUI(localGameData); // Re-render to show "Move" button
             }
         }
 
-        async function handleConfirmMove(fromIndex, toIndex) {
+        /**
+         * NEW: Executes a silent ship move. Does NOT cost a turn.
+         * @param {number} fromIndex - The grid index to move from.
+         * @param {number} toIndex - The grid index to move to.
+         */
+        async function executeSilentMove(fromIndex, toIndex) {
             gameStatus.textContent = "Moving ship...";
-            myTurnActions.classList.add('hidden');
-            myGridContainer.style.pointerEvents = 'none';
+            myGridContainer.style.pointerEvents = 'none'; // Briefly disable grid
 
             const myPlayer = localGameData.players.find(p => p.userId === userId);
             let newGrid = [...myPlayer.grid];
@@ -1208,28 +1239,23 @@
                 p.userId === userId ? { ...p, grid: newGrid } : p
             );
             
-            let newLogMessages = [`${myPlayer.name} moved a ship.`];
-
-            // This action costs a turn, so find next player
-            let nextPlayerIndex = localGameData.currentPlayerIndex;
-            do {
-                nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
-            } while (newPlayers[nextPlayerIndex].isOut);
-
+            // This is the key: ONLY update players array. No log, no turn change.
             const roomRef = doc(db, getRoomPath());
             try {
                 await updateDoc(roomRef, {
-                    players: newPlayers,
-                    currentPlayerIndex: nextPlayerIndex,
-                    gameLog: arrayUnion(...newLogMessages)
+                    players: newPlayers
                 });
+                // On success, set local flag and reset state
+                hasMovedShipThisTurn = true;
+                cancelMove(); // This will re-enable grid and call render
             } catch (err) {
                 console.error("Error moving ship:", err);
                 showMessage("Error moving ship. Please try again.");
-            } finally {
                 myGridContainer.style.pointerEvents = 'auto';
-                cancelMove();
+                cancelMove(); // Reset on error
             }
+            // Note: `cancelMove()` calls `renderGameUI()`, which will see
+            // `hasMovedShipThisTurn = true` and disable the move button.
         }
 
 
@@ -1247,6 +1273,7 @@
             localGameData = null;
             currentRoomCode = null;
             cancelMove(); // Reset move state
+            hasMovedShipThisTurn = false; // Reset move flag
             
             joinButton.disabled = false;
             joinButton.textContent = "Join Game";
@@ -1280,8 +1307,17 @@
             unsubscribeRoom = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
                     const oldState = localGameData ? localGameData.gameState : null;
+                    const oldPlayerIndex = localGameData ? localGameData.currentPlayerIndex : -1;
+                    
                     localGameData = doc.data();
                     
+                    // Check if the turn has *just* passed from me to someone else
+                    const newPlayerIndex = localGameData.currentPlayerIndex;
+                    const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
+                    if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
+                        hasMovedShipThisTurn = false;
+                    }
+
                     opponentGridsContainer.style.pointerEvents = 'auto';
                     myGridContainer.style.pointerEvents = 'auto';
                     
@@ -1319,7 +1355,6 @@
                     if (user) {
                         userId = user.uid;
                         console.log("Authenticated with userId:", userId);
-                        // initColorPicker(); // Removed from here
                         showLoginScreen(); 
                     } else {
                         console.log("User is not authenticated. Attempting sign-in...");
@@ -1339,7 +1374,7 @@
                 moveShipButton.addEventListener('click', handleMoveShipClick);
                 cancelMoveButton.addEventListener('click', cancelMove);
                 
-                roomColorPicker.addEventListener('click', handleColorSelectInRoom); // Added
+                roomColorPicker.addEventListener('click', handleColorSelectInRoom); 
                 
                 messageOkButton.addEventListener('click', () => {
                     messageModal.classList.add('hidden');
