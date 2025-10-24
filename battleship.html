@@ -56,7 +56,7 @@
         }
 
         /* My grid: hover effect */
-        .my-grid .grid-cell:not(.ship):not(.miss):not(.hit):not(.ship-selected-for-move):hover {
+        .my-grid .grid-cell:not(.ship):not(.miss):not(.hit):not(.ship-selected-for-move):not(.move-option):hover {
             background-color: #a3d5ff; /* light-blue-200 */
         }
         
@@ -104,6 +104,16 @@
             background-color: #fef08a; /* yellow-200 */
             border-color: #fde047; /* yellow-300 */
             box-shadow: 0 0 10px #fde047;
+        }
+
+        /* NEW: Style for valid move options */
+        .grid-cell.move-option {
+            background-color: #cce7ff;
+            border: 2px dashed #facc15; /* yellow-400 */
+            cursor: pointer;
+        }
+        .grid-cell.move-option:hover {
+            background-color: #fef9c3; /* yellow-100 */
         }
 
         /* Player card when out */
@@ -243,14 +253,9 @@
 
                     <!-- My Grid Container -->
                     <div id="my-grid-container" class="bg-white p-4 rounded-lg shadow-lg">
-                        <!-- My Turn Actions (Move Ship) -->
+                        <!-- My Turn Actions (REMOVED) -->
                         <div id="my-turn-actions" class="hidden mb-4 text-center space-x-4">
-                            <button id="move-ship-button" class="bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md shadow-md transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:opacity-50">
-                                Move a Ship (1/turn)
-                            </button>
-                            <button id="cancel-move-button" class="hidden bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-200">
-                                Cancel Move
-                            </button>
+                            <!-- This container is now hidden by default and no longer used -->
                         </div>
 
                         <!-- My grid will be inserted here -->
@@ -353,7 +358,7 @@
 
         // --- Game Constants ---
         const GRID_SIZE = 6;
-        const SHIP_COUNT = 5; // <-- UPDATED
+        const SHIP_COUNT = 5;
         const MAX_PLAYERS = 20;
 
         // --- Global Variables ---
@@ -361,9 +366,11 @@
         let userId, myPlayerName, currentRoomCode;
         let localGameData = null;
         let unsubscribeRoom = null;
-        let isMovingShip = false;      // State for moving a ship
+        
+        // NEW: State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
-        let hasMovedShipThisTurn = false; // NEW: Local flag for ship movement
+        let validMoveIndices = [];   // Array of valid destination indices
+        let hasMovedShipThisTurn = false; // Local flag for ship movement
 
         // NEW: Darker Pastel colors
         const PLAYER_COLORS = [
@@ -422,11 +429,10 @@
         
         const myGridContainer = document.getElementById('my-grid-container');
         const opponentGridsContainer = document.getElementById('opponent-grids-container');
-        const gameLogContainer = document.getElementById('game-log-container'); // Renamed
+        const gameLogContainer = document.getElementById('game-log-container');
 
         const myTurnActions = document.getElementById('my-turn-actions');
-        const moveShipButton = document.getElementById('move-ship-button');
-        const cancelMoveButton = document.getElementById('cancel-move-button');
+        // REMOVED moveShipButton, cancelMoveButton
         
         const waitingRoomControls = document.getElementById('waiting-room-controls');
         const playerListContainer = document.getElementById('player-list-container');
@@ -486,13 +492,24 @@
         }
 
         /**
-         * NEW: Converts a grid index to "A1" style coordinates.
+         * Converts a grid index to row/col object.
+         * @param {number} index - The grid index (0-35).
+         * @returns {object} - { row, col }
+         */
+        function toRowCol(index) {
+            return {
+                row: Math.floor(index / GRID_SIZE),
+                col: index % GRID_SIZE
+            };
+        }
+
+        /**
+         * Converts a grid index to "A1" style coordinates.
          * @param {number} index - The grid index (0-35).
          * @returns {string} - The coordinate string (e.g., "A1", "F6").
          */
         function toGridCoord(index) {
-            const row = Math.floor(index / GRID_SIZE);
-            const col = index % GRID_SIZE;
+            const { row, col } = toRowCol(index);
             const rowLabel = ['A', 'B', 'C', 'D', 'E', 'F'][row];
             const colLabel = col + 1;
             return `${rowLabel}${colLabel}`;
@@ -559,8 +576,12 @@
                             }
                         }
                         // Show highlight if selected for moving
-                        if (isMovingShip && i === shipToMoveIndex) {
+                        if (i === shipToMoveIndex) {
                             cellClass += ' ship-selected-for-move';
+                        }
+                        // Show highlight if it's a valid move option
+                        if (validMoveIndices.includes(i)) {
+                            cellClass += ' move-option';
                         }
                     } else {
                         // Opponent Grid: Show only hits and misses
@@ -662,7 +683,7 @@
             setupControls.classList.add('hidden');
             waitingRoomControls.classList.add('hidden');
             gameOverModal.classList.add('hidden');
-            myTurnActions.classList.add('hidden');
+            myTurnActions.classList.add('hidden'); // This is now permanently hidden
             
             // Render Game Log
             roomData.gameLog.slice().reverse().forEach(msg => {
@@ -719,32 +740,28 @@
                             hasMovedShipThisTurn = false;
                         }
 
-                        myTurnActions.classList.remove('hidden');
                         opponentGridsContainer.style.pointerEvents = 'auto'; // Attack grid is active
 
-                        if (isMovingShip) {
-                            gameStatus.textContent = shipToMoveIndex === null ? "Move: Select an un-hit ship." : "Move: Select an empty cell.";
+                        if (shipToMoveIndex !== null) {
+                            gameStatus.textContent = "Move: Select an adjacent empty cell.";
                             gameStatus.classList.add('text-yellow-500');
-                            moveShipButton.classList.add('hidden');
-                            cancelMoveButton.classList.remove('hidden');
                             opponentGridsContainer.style.pointerEvents = 'none'; // Disable attacking
                         } else {
                             gameStatus.textContent = "Your Turn! Attack!";
+                            if (!hasMovedShipThisTurn) {
+                                gameStatus.textContent += " (Or click a ship to move)";
+                            }
                             gameStatus.classList.add('text-yellow-500');
-                            moveShipButton.classList.remove('hidden');
-                            cancelMoveButton.classList.add('hidden');
-                            moveShipButton.disabled = hasMovedShipThisTurn;
                         }
                     } else { // Not my turn
                         gameStatus.textContent = `Waiting for ${currentPlayer.name}'s turn...`;
                         gameStatus.classList.remove('text-yellow-500');
                         hasMovedShipThisTurn = false; // Reset flag when not my turn
-                        if (isMovingShip) cancelMove(); // Reset move state if turn passed
+                        if (shipToMoveIndex !== null) cancelMove(); // Reset move state if turn passed
                     }
                     
                     // Render my grid (Must be after "Move Ship" logic to get highlights)
-                    myGridContainer.prepend(myTurnActions); // Re-insert actions
-                    myGridContainer.innerHTML += createGridHTML(myPlayer, true, false);
+                    myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
 
                     // Render opponent grids
                     roomData.players.forEach(player => {
@@ -752,7 +769,7 @@
                         if (player.isOut) {
                             opponentGridsContainer.innerHTML += createPlayerOutHTML(player);
                         } else {
-                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && !isMovingShip);
+                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && shipToMoveIndex === null);
                         }
                     });
                     break;
@@ -970,48 +987,35 @@
             if (isNaN(row) || isNaN(col)) return; // Clicked on a label
             
             const index = toIndex(row, col);
+            const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
+            const isMyTurn = localGameData.gameState === 'playing' && currentPlayer.userId === userId;
 
-            // --- Move Ship Logic ---
-            if (localGameData.gameState === 'playing' && isMovingShip) {
-                if (!cellEl.closest('.my-grid')) return; 
-                
+            // --- Move Ship Logic (NEW) ---
+            if (isMyTurn && cellEl.closest('.my-grid')) {
                 const myPlayer = localGameData.players.find(p => p.userId === userId);
-                
-                if (shipToMoveIndex === null) {
-                    // --- 1. Selecting the ship to move ---
-                    if (myPlayer.grid[index] === 1) { // It's an un-hit ship
-                        shipToMoveIndex = index;
-                        cellEl.classList.add('ship-selected-for-move'); 
-                        gameStatus.textContent = "Move: Select an adjacent empty cell.";
-                    } else {
-                        showMessage("You must select one of your un-hit ships (dark gray squares).");
-                    }
-                } else {
-                    // --- 2. Selecting the destination ---
-                    if (myPlayer.grid[index] === 0) { // It's an empty cell
-                        const fromRow = Math.floor(shipToMoveIndex / GRID_SIZE);
-                        const fromCol = shipToMoveIndex % GRID_SIZE;
-                        const toRow = Math.floor(index / GRID_SIZE);
-                        const toCol = index % GRID_SIZE;
-                        
-                        // Check if it's one cell away (not diagonal)
-                        const isAdjacent = Math.abs(fromRow - toRow) + Math.abs(fromCol - toCol) === 1;
 
-                        if (isAdjacent) {
-                            executeSilentMove(shipToMoveIndex, index);
-                        } else {
-                            showMessage("You can only move one cell (up, down, left, or right).");
-                        }
-                    } else if (index === shipToMoveIndex) {
-                        // Clicked same ship, de-select it
-                        shipToMoveIndex = null;
-                        cellEl.classList.remove('ship-selected-for-move');
-                        gameStatus.textContent = "Move: Select an un-hit ship.";
-                    } else {
-                        showMessage("You must select an empty cell (light blue) as the destination.");
-                    }
+                // --- 1. Trying to move to a highlighted destination ---
+                if (validMoveIndices.includes(index)) {
+                    executeSilentMove(shipToMoveIndex, index);
+                    return; // Move is done
                 }
-                return; 
+
+                // --- 2. Trying to select a ship to move ---
+                if (!hasMovedShipThisTurn && myPlayer.grid[index] === 1) { // It's an un-hit ship
+                    cancelMove(); // Clear previous selection
+                    shipToMoveIndex = index;
+                    calculateValidMoves(index, myPlayer.grid);
+                    renderGameUI(localGameData); // Re-render to show highlights
+                    return; // Waiting for destination click
+                }
+                
+                // --- 3. Clicked anywhere else on my grid ---
+                if (shipToMoveIndex !== null) {
+                    cancelMove();
+                    renderGameUI(localGameData);
+                    return;
+                }
+                // (fall through to setup logic if in setup state)
             }
 
             // --- Setup Logic ---
@@ -1023,14 +1027,14 @@
                 }
             } 
             // --- Attack Logic ---
-            else if (localGameData.gameState === 'playing') {
-                const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
-                if (currentPlayer.userId !== userId) {
-                    showMessage("It's not your turn!");
-                    return;
-                }
-                if (cellEl.closest('.opponent-grid')) {
+            else if (isMyTurn && cellEl.closest('.opponent-grid')) {
+                // Can only attack if NOT in the middle of a move
+                if (shipToMoveIndex === null) {
                     handleAttackClick(cellEl.dataset.playerId, index);
+                } else {
+                    // Clicked on opponent grid while moving, cancel move
+                    cancelMove();
+                    renderGameUI(localGameData);
                 }
             }
         }
@@ -1191,34 +1195,47 @@
                 console.error("Error during attack:", err);
                 showMessage("Error processing attack. Please try again.");
             } finally {
-                setTimeout(() => {
-                     opponentGridsContainer.style.pointerEvents = 'auto';
-                }, 500);
+                // Snapshot listener will re-enable grid
             }
         }
         
         // --- REVISED: Ship Moving Functions ---
 
         /**
-         * Initiates the "Move Ship" state.
+         * Calculates valid adjacent move destinations.
+         * @param {number} fromIndex - The grid index to move from.
+         * @param {Array} grid - The player's grid.
          */
-        function handleMoveShipClick() {
-            isMovingShip = true;
-            shipToMoveIndex = null;
-            renderGameUI(localGameData); // Re-render to show "Cancel" button and update status
+        function calculateValidMoves(fromIndex, grid) {
+            validMoveIndices = [];
+            const { row, col } = toRowCol(fromIndex);
+            
+            const potentialMoves = [
+                { r: row - 1, c: col }, // Up
+                { r: row + 1, c: col }, // Down
+                { r: row, c: col - 1 }, // Left
+                { r: row, c: col + 1 }  // Right
+            ];
+
+            for (const move of potentialMoves) {
+                // Check bounds
+                if (move.r >= 0 && move.r < GRID_SIZE && move.c >= 0 && move.c < GRID_SIZE) {
+                    const toIndex = toIndex(move.r, move.c);
+                    // Check if cell is empty (0)
+                    if (grid[toIndex] === 0) {
+                        validMoveIndices.push(toIndex);
+                    }
+                }
+            }
         }
 
         /**
          * Cancels the "Move Ship" state.
          */
         function cancelMove() {
-            const selected = document.querySelector('.ship-selected-for-move');
-            if(selected) selected.classList.remove('ship-selected-for-move');
-            isMovingShip = false;
             shipToMoveIndex = null;
-            if (localGameData) {
-                renderGameUI(localGameData); // Re-render to show "Move" button
-            }
+            validMoveIndices = [];
+            // No render here, the calling function will render.
         }
 
         /**
@@ -1247,18 +1264,16 @@
                 });
                 // On success, set local flag and reset state
                 hasMovedShipThisTurn = true;
-                cancelMove(); // This will call render
-                // FIX: Explicitly re-enable pointer events here,
-                // just in case the snapshot is delayed.
-                myGridContainer.style.pointerEvents = 'auto'; 
+                cancelMove(); // This will clear move state
+                // Snapshot will handle the re-render and re-enable grid.
             } catch (err) {
                 console.error("Error moving ship:", err);
                 showMessage("Error moving ship. Please try again.");
                 myGridContainer.style.pointerEvents = 'auto';
                 cancelMove(); // Reset on error
             }
-            // Note: `cancelMove()` calls `renderGameUI()`, which will see
-            // `hasMovedShipThisTurn = true` and disable the move button.
+            // Note: The snapshot listener will call `renderGameUI()`, which will see
+            // `hasMovedShipThisTurn = true` and `shipToMoveIndex = null`.
         }
 
 
@@ -1319,12 +1334,23 @@
                     const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
                     if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
                         hasMovedShipThisTurn = false;
+                        cancelMove(); // Ensure move state is reset
                     }
 
+                    // Re-enable grids by default
                     opponentGridsContainer.style.pointerEvents = 'auto';
                     myGridContainer.style.pointerEvents = 'auto';
                     
                     renderGameUI(localGameData);
+
+                    // Re-disable grids if necessary after render
+                    if (localGameData.gameState === 'playing') {
+                        const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
+                        const isMyTurn = currentPlayer.userId === userId;
+                        if (isMyTurn && shipToMoveIndex !== null) {
+                            opponentGridsContainer.style.pointerEvents = 'none';
+                        }
+                    }
 
                     if (oldState !== 'over' && localGameData.gameState === 'over') {
                         setTimeout(() => {
@@ -1374,8 +1400,7 @@
                 opponentGridsContainer.addEventListener('click', handleGridClick);
                 
                 readyButton.addEventListener('click', handleReadyClick);
-                moveShipButton.addEventListener('click', handleMoveShipClick);
-                cancelMoveButton.addEventListener('click', cancelMove);
+                // REMOVED moveShipButton, cancelMoveButton listeners
                 
                 roomColorPicker.addEventListener('click', handleColorSelectInRoom); 
                 
@@ -1400,6 +1425,4 @@
     </script>
 </body>
 </html>
-
-
 
