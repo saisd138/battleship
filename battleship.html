@@ -1367,10 +1367,14 @@
          * @param {number} index - The cell index clicked (0-35).
          */
         async function handleSetupClick(index) {
+            // FIX: Optimistic UI Update
+            if (!localGameData) return;
             const myPlayer = localGameData.players.find(p => p.userId === userId);
+            if (!myPlayer || myPlayer.ready) return;
+
             let newGrid = [...myPlayer.grid];
             let newShipsPlaced = myPlayer.shipsPlaced;
-            let newMinesPlaced = myPlayer.minesPlaced; // NEW
+            let newMinesPlaced = myPlayer.minesPlaced;
             
             const currentCell = newGrid[index];
             
@@ -1402,18 +1406,26 @@
                  // All items placed, can only remove mines
                 newGrid[index] = 0;
                 newMinesPlaced--;
+            } else {
+                return; // Clicked on invalid spot
             }
-            
+
+            // Optimistically update local data and re-render
             const newPlayers = localGameData.players.map(p => 
                 p.userId === userId ? { ...p, grid: newGrid, shipsPlaced: newShipsPlaced, minesPlaced: newMinesPlaced } : p
             );
+            localGameData.players = newPlayers;
+            renderGameUI(localGameData); // Re-render immediately
             
+            // Update Firestore in the background
             const roomRef = doc(db, getRoomPath());
             try {
+                // Note: We only update 'players', not the whole localGameData
                 await updateDoc(roomRef, { players: newPlayers });
             } catch (err) {
                 console.error("Error placing item:", err);
                 showMessage("Error placing item. Please try again.");
+                // TODO: Consider a rollback, but for setup it's low-risk
             }
         }
 
