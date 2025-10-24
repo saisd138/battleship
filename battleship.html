@@ -12,13 +12,21 @@
             font-family: 'Inter', sans-serif;
         }
 
-        /* Constants for grid size */
+        /* Constants for grid size - MOBILE FIRST */
         :root {
             --grid-size: 6;
-            --cell-size: 35px; /* Slightly smaller for 6x6 */
-            --label-size: 35px;
+            --cell-size: 20px; /* Mobile size */
+            --label-size: 20px; /* Mobile size */
         }
         
+        /* Desktop grid sizes */
+        @media (min-width: 640px) {
+            :root {
+                --cell-size: 35px; /* Desktop size */
+                --label-size: 35px; /* Desktop size */
+            }
+        }
+
         /* Base cell style */
         .grid-cell {
             width: var(--cell-size);
@@ -30,11 +38,17 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1rem; /* 16px */
+            font-size: 0.75rem; /* Mobile font size */
             font-weight: bold;
             transition: all 0.15s ease-in-out;
             position: relative;
         }
+        @media (min-width: 640px) {
+            .grid-cell {
+                font-size: 1rem; /* Desktop font size */
+            }
+        }
+
 
         /* Row/Col labels */
         .grid-label {
@@ -43,10 +57,16 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.75rem;
+            font-size: 0.625rem; /* Mobile font size */
             font-weight: 600;
             color: #6b7280; /* gray-500 */
         }
+        @media (min-width: 640px) {
+            .grid-label {
+                font-size: 0.75rem; /* Desktop font size */
+            }
+        }
+
         .grid-wrapper {
             display: grid;
             /* 1 label + 6 cells */
@@ -121,14 +141,27 @@
             background-color: #f3f4f6; /* gray-100 */
             border: 2px dashed #fca5a5; /* red-300 */
             color: #9ca3af; /* gray-400 */
-            /* Sizing to match the new 6x6 grid card */
-            width: 289px; /* Updated size: (35*7 + 2*6 + 16*2) = 245+12+32 = 289 */
-            height: 385px;
+            
+            /* Sizing for Mobile (20*7 + 2*6 + 16*2) = 140+12+32 = 184px */
+            width: 173px; 
+            height: 221px; /* (20*7 + 2*6 + 16*2 + 18+20) ~ 221 */
+
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            padding: 8px;
         }
+        
+        /* Sizing for Desktop */
+        @media (min-width: 640px) {
+            .player-out-card {
+                width: 289px; /* (35*7 + 2*6 + 16*2) = 245+12+32 = 289 */
+                height: 385px;
+                padding: 16px;
+            }
+        }
+
 
         /* Modal backdrop */
         .modal-backdrop {
@@ -210,8 +243,6 @@
                     <input type="text" id="name-input" class="w-full bg-white border border-gray-300 rounded-md p-3 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="E.g., Captain-A">
                 </div>
 
-                <!-- Color Picker REMOVED from here -->
-
                 <!-- Create Room -->
                 <div class="border-b border-gray-200 pb-6">
                     <button id="create-room-button" class="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-4 rounded-md shadow-lg transition duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-opacity-50">
@@ -254,7 +285,8 @@
             <div class="flex flex-col lg:flex-row gap-6">
 
                 <!-- Left Column (My Grid + Setup) -->
-                <div class="flex-shrink-0 w-full lg:w-auto">
+                <!-- MODIFIED: Added flex-col to group my grid and setup controls -->
+                <div class="flex flex-col items-center lg:items-start flex-shrink-0 w-full lg:w-auto">
                     <!-- Setup Controls -->
                     <div id="setup-controls" class="hidden bg-white p-4 rounded-lg shadow-lg mb-6 text-center">
                         <h3 id="setup-instructions" class="text-xl font-semibold text-yellow-600">Place your 5 ships on your grid below.</h3>
@@ -265,7 +297,8 @@
                     </div>
 
                     <!-- My Grid Container -->
-                    <div id="my-grid-container" class="bg-white p-4 rounded-lg shadow-lg">
+                    <!-- MODIFIED: Added responsive padding -->
+                    <div id="my-grid-container" class="bg-white p-2 sm:p-4 rounded-lg shadow-lg">
                         <!-- My Turn Actions (REMOVED) -->
                         <div id="my-turn-actions" class="hidden mb-4 text-center space-x-4">
                             <!-- This container is now hidden by default and no longer used -->
@@ -273,35 +306,36 @@
 
                         <!-- My grid will be inserted here -->
                     </div>
+                </div>
 
-                     <!-- Game Log (Combined) -->
-                    <div class="mt-6">
-                        <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log / Chat</h3>
-                        <div id="game-log-container" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
-                            <!-- Log messages will be inserted here -->
-                        </div>
-                        <!-- NEW: Chat Input -->
-                        <div id="chat-controls" class="mt-2 hidden">
-                            <div class="flex gap-2">
-                                <input type="text" id="chat-input" class="flex-grow bg-white border border-gray-300 rounded-md p-2 text-sm text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="Type a message...">
-                                <button id="chat-send-button" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-200">
-                                    Send
-                                </button>
-                            </div>
+                <!-- Right Column (Opponent Grids) -->
+                <div class="flex-grow min-w-0">
+                    <!-- MODIFIED: responsive padding -->
+                    <div class="bg-white p-2 sm:p-4 rounded-lg shadow-lg h-full">
+                        <h3 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 text-center sm:text-left">Opponents</h3>
+                        <!-- Opponent Grids Area -->
+                        <!-- MODIFIED: Grid layout for mobile, flex for desktop -->
+                        <div id="opponent-grids-container" class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-4 lg:justify-start overflow-y-auto p-1 sm:p-2 bg-gray-50 rounded-md" style="max-height: calc(100vh - 300px);">
+                            <!-- Opponent grids will be inserted here -->
                         </div>
                     </div>
                 </div>
-
-                <!-- Right Column (Opponent Grids + Log) -->
-                <div class="flex-grow min-w-0">
-                    <div class="bg-white p-4 rounded-lg shadow-lg h-full">
-                        <h3 class="text-2xl font-bold text-gray-800 mb-4">Opponents</h3>
-                        <!-- Opponent Grids Area -->
-                        <div id="opponent-grids-container" class="flex flex-wrap justify-center lg:justify-start gap-4 max-h-[60vh] lg:max-h-[calc(100vh-300px)] overflow-y-auto p-2 bg-gray-50 rounded-md">
-                            <!-- Opponent grids will be inserted here -->
-                        </div>
-
-                         <!-- Game Log (Desktop) - REMOVED -->
+            </div>
+            
+            <!-- Game Log (MOVED) -->
+            <!-- This is now outside the flex layout, at the bottom -->
+            <div class="mt-6">
+                <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log / Chat</h3>
+                <div id="game-log-container" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
+                    <!-- Log messages will be inserted here -->
+                </div>
+                <!-- NEW: Chat Input -->
+                <div id="chat-controls" class="mt-2 hidden">
+                    <div class="flex gap-2">
+                        <input type="text" id="chat-input" class="flex-grow bg-white border border-gray-300 rounded-md p-2 text-sm text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="Type a message...">
+                        <button id="chat-send-button" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-200">
+                            Send
+                        </button>
                     </div>
                 </div>
             </div>
@@ -630,9 +664,9 @@
             }
 
             return `
-                <div class="p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
-                    <h3 class="font-bold text-lg text-center mb-2" style="color: ${playerColor};">${player.name}</h3>
-                    <p class="text-center text-sm text-gray-600 mb-3">Ships Left: ${player.shipsLeft}</p>
+                <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
+                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name}</h3>
+                    <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
                     <div class="grid-wrapper">
                         ${cellsHTML}
                     </div>
@@ -647,9 +681,9 @@
          */
         function createPlayerOutHTML(player) {
             return `
-                <div class="p-4 rounded-lg shadow-md player-out-card w-[289px] h-[385px]">
-                    <h3 class="font-bold text-lg text-center mb-3 text-gray-500">${player.name}</h3>
-                    <p class="text-2xl text-red-500 font-bold">ELIMINATED</p>
+                <div class="p-2 sm:p-4 rounded-lg shadow-md player-out-card">
+                    <h3 class="font-bold text-base sm:text-lg text-center mb-3 text-gray-500">${player.name}</h3>
+                    <p class="text-xl sm:text-2xl text-red-500 font-bold">ELIMINATED</p>
                 </div>
             `;
         }
@@ -1356,6 +1390,7 @@
         /**
          * Executes a silent ship move. Does NOT cost a turn.
          * @param {number} fromIndex - The grid index to move from.
+         *_..._
          * @param {number} toIndex - The grid index to move to.
          */
         async function executeSilentMove(fromIndex, toIndex) {
