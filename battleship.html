@@ -743,9 +743,23 @@
                         opponentGridsContainer.style.pointerEvents = 'auto'; // Attack grid is active
 
                         if (shipToMoveIndex !== null) {
-                            gameStatus.textContent = "Move: Select an adjacent empty cell.";
-                            gameStatus.classList.add('text-yellow-500');
-                            opponentGridsContainer.style.pointerEvents = 'none'; // Disable attacking
+                            // FIX: Re-calculate valid moves based on fresh data
+                            calculateValidMoves(shipToMoveIndex, myPlayer.grid);
+                            
+                            // FIX: Check if the original ship is still valid to move
+                            if (myPlayer.grid[shipToMoveIndex] !== 1) {
+                                cancelMove(); // Ship was hit, cancel move
+                                // Rerun the status logic
+                                gameStatus.textContent = "Your Turn! Attack!";
+                                if (!hasMovedShipThisTurn) {
+                                    gameStatus.textContent += " (Or click a ship to move)";
+                                }
+                                gameStatus.classList.add('text-yellow-500');
+                            } else {
+                                gameStatus.textContent = "Move: Select an adjacent empty cell.";
+                                gameStatus.classList.add('text-yellow-500');
+                                opponentGridsContainer.style.pointerEvents = 'none'; // Disable attacking
+                            }
                         } else {
                             gameStatus.textContent = "Your Turn! Attack!";
                             if (!hasMovedShipThisTurn) {
@@ -1001,7 +1015,8 @@
                 }
 
                 // --- 2. Trying to select a ship to move ---
-                if (!hasMovedShipThisTurn && myPlayer.grid[index] === 1) { // It's an un-hit ship
+                // FIX: Added `&& index !== shipToMoveIndex`
+                if (!hasMovedShipThisTurn && myPlayer.grid[index] === 1 && index !== shipToMoveIndex) { // It's an un-hit ship
                     cancelMove(); // Clear previous selection
                     shipToMoveIndex = index;
                     calculateValidMoves(index, myPlayer.grid);
