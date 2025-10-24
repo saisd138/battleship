@@ -6,8 +6,7 @@
     <title>Battleship Royale</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- NEW: Load PeerJS Library -->
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <!-- REMOVED PeerJS Library -->
     <style>
         /* Custom game-specific styles */
         body {
@@ -345,13 +344,10 @@
                 </div>
             </div>
             
-            <!-- Game Log (MOVED) -->
+            <!-- Game Log (REVERSED) -->
             <div class="mt-6">
                 <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log / Chat</h3>
-                <div id="game-log-container" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
-                    <!-- Log messages will be inserted here -->
-                </div>
-                <!-- Chat Input -->
+                <!-- Chat Input (MOVED) -->
                 <div id="chat-controls" class="mt-2 hidden">
                     <div class="flex gap-2">
                         <input type="text" id="chat-input" class="flex-grow bg-white border border-gray-300 rounded-md p-2 text-sm text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="Type a message...">
@@ -359,6 +355,10 @@
                             Send
                         </button>
                     </div>
+                </div>
+                <!-- Log Container (MOVED) -->
+                <div id="game-log-container" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2 mt-2">
+                    <!-- Log messages will be inserted here -->
                 </div>
             </div>
             
@@ -451,12 +451,12 @@
         let unsubscribeRoom = null;
         let isSpectator = false;
         
-        // --- NEW: PeerJS Voice Chat Globals ---
-        let peer = null;
+        // --- NEW: WebRTC Voice Chat Globals (Firebase Signaling) ---
         let localStream = null;
-        let voiceConnections = {}; // { otherPlayerId: Peer.MediaConnection }
-        let audioElements = {};   // { otherPlayerId: HTMLAudioElement }
         let isMuted = false;
+        let inVoiceChat = false; // Tracks if I've *clicked* "Join Voice"
+        let rtcConnections = {}; // { otherPlayerId: RTCPeerConnection }
+        let audioElements = {};   // { otherPlayerId: HTMLAudioElement }
         
         // State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
@@ -576,19 +576,6 @@
         function getRoomPath() {
             return `artifacts/${appId}/public/data/battleship_rooms/${currentRoomCode}`;
         }
-        
-        /**
-         * NEW: Creates a unique PeerJS ID based on room and user.
-         * This prevents collisions if the same user joins multiple rooms.
-         * @param {string} roomId - The current room code.
-         *@param {string} usrId - The current user ID.
-         * @returns {string} - A unique ID for PeerJS.
-         */
-        function getPeerId(roomId, usrId) {
-            // PeerJS IDs must be alphanumeric + dashes/underscores
-            const safeUserId = usrId.replace(/[^a-zA-Z0-9]/g, '');
-            return `battleship-${roomId}-${safeUserId}`.slice(0, 100); // Keep ID reasonable
-        }
 
         /**
          * Converts row and column to a 0-35 index.
@@ -632,15 +619,19 @@
             return {
                 userId: userId,
                 name: myPlayerName,
-                color: null, // Color set after joining
+                color: null, 
                 grid: Array(GRID_SIZE * GRID_SIZE).fill(0),
                 shipsPlaced: 0,
-                minesPlaced: 0, // NEW
+                minesPlaced: 0,
                 shipsLeft: SHIP_COUNT, 
                 isOut: false,
                 ready: false,
-                peerId: null, // NEW: Will store their PeerJS ID
-                isSkippingTurn: false // NEW: For mine penalty
+                isSkippingTurn: false,
+                // NEW: WebRTC Signaling fields
+                inVoice: false,
+                offers: [], // { target: otherUserId, offer: sdp }
+                answers: [], // { target: otherUserId, answer: sdp }
+                iceCandidates: [] // { target: otherUserId, candidate: candidate }
             };
         }
 
@@ -676,7 +667,7 @@
                     if (isMe) {
                         // My Grid: Show everything
                         if (cellState === 1) cellClass += ' ship';
-                        if (cellState === 2) { // NEW: Show my mine
+                        if (cellState === 2) { 
                             cellClass += ' mine';
                             content = '💣';
                         }
@@ -690,7 +681,7 @@
                                 cellClass += ' hit';
                                 content = '🚢';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
-                            } else if (cellState.type === 'mine-hit') { // NEW: Mine hit
+                            } else if (cellState.type === 'mine-hit') {
                                 cellClass += ' mine-hit';
                                 content = '💥';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
@@ -715,7 +706,7 @@
                                 cellClass += ' hit';
                                 content = '🚢';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
-                            } else if (cellState.type === 'mine-hit') { // NEW: Mine hit
+                            } else if (cellState.type === 'mine-hit') {
                                 cellClass += ' mine-hit';
                                 content = '💥';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
@@ -729,7 +720,7 @@
 
             return `
                 <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
-                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name} ${player.peerId ? '🎙️' : ''}</h3>
+                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name} ${player.inVoice ? '🎙️' : ''}</h3>
                     <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
                     ${player.isSkippingTurn ? '<p class="text-center text-xs sm:text-sm text-red-500 font-bold mb-2">SKIPPING TURN</p>' : ''}
                     <div class="grid-wrapper">
@@ -877,7 +868,7 @@
                     roomData.players.forEach(player => {
                         const playerCard = `
                             <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center">
-                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name} ${player.peerId ? '🎙️' : ''}</h3>
+                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name} ${player.inVoice ? '🎙️' : ''}</h3>
                                 ${player.color ? '' : '<p class="text-sm text-red-500">Choosing color...</p>'}
                             </div>
                         `;
@@ -1180,59 +1171,86 @@
             }
         }
         
+        // --- NEW: WebRTC (Firebase Signaling) Functions ---
+
         /**
-         * NEW: Handles joining the integrated voice chat using PeerJS.
+         * Creates a new RTCPeerConnection and configures it.
+         * @param {string} otherUserId - The user ID of the player to connect to.
+         */
+        function createPeerConnection(otherUserId) {
+            if (rtcConnections[otherUserId]) return rtcConnections[otherUserId];
+
+            console.log(`Creating new RTCPeerConnection for ${otherUserId}`);
+            const pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+            rtcConnections[otherUserId] = pc;
+
+            // Add local stream tracks
+            if (localStream) {
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            }
+
+            // Handle incoming ICE candidates
+            pc.onicecandidate = async (event) => {
+                if (event.candidate) {
+                    console.log(`Sending ICE candidate to ${otherUserId}`);
+                    const me = localGameData.players.find(p => p.userId === userId);
+                    const newCandidates = [
+                        ...me.iceCandidates, 
+                        { target: otherUserId, candidate: event.candidate.toJSON() }
+                    ];
+                    // Update only my player object's candidates
+                    const newPlayers = localGameData.players.map(p => 
+                        p.userId === userId ? { ...p, iceCandidates: newCandidates } : p
+                    );
+                    await updateDoc(doc(db, getRoomPath()), { players: newPlayers });
+                }
+            };
+
+            // Handle incoming remote stream
+            pc.ontrack = (event) => {
+                console.log(`Receiving track from ${otherUserId}`);
+                let audioEl = audioElements[otherUserId];
+                if (!audioEl) {
+                    audioEl = document.createElement('audio');
+                    audioEl.autoplay = true;
+                    audioElements[otherUserId] = audioEl;
+                    audioStreamsContainer.appendChild(audioEl);
+                }
+                audioEl.srcObject = event.streams[0];
+            };
+            
+            pc.onconnectionstatechange = () => {
+                console.log(`Connection state for ${otherUserId}: ${pc.connectionState}`);
+                if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
+                    cleanupPeerConnection(otherUserId);
+                }
+            };
+
+            return pc;
+        }
+
+        /**
+         * Joins the voice chat by getting mic access and updating state.
          */
         async function handleJoinVoiceChat() {
-            if (peer || localStream || isSpectator) return; // Already joined or is spectator
-
+            if (localStream || isSpectator) return; 
             voiceChatButton.disabled = true;
             voiceChatButton.textContent = "Joining...";
 
             try {
-                // 1. Get user's microphone
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                
-                // 2. Initialize PeerJS
-                const myPeerId = getPeerId(currentRoomCode, userId);
-                peer = new Peer(myPeerId); // Connect to PeerJS's free signaling server
+                inVoiceChat = true;
 
-                peer.on('open', async (id) => {
-                    console.log('My PeerJS ID is:', id);
-                    
-                    // 3. Update UI
-                    voiceChatButton.textContent = "Voice Joined 🎙️";
-                    muteSelfButton.classList.remove('hidden');
-                    
-                    // 4. Update our state in Firestore to notify others
-                    const roomRef = doc(db, getRoomPath());
-                    const myPlayer = localGameData.players.find(p => p.userId === userId);
-                    if (myPlayer) {
-                        const newPlayers = localGameData.players.map(p => 
-                            p.userId === userId ? { ...p, peerId: id } : p
-                        );
-                        await updateDoc(roomRef, { players: newPlayers });
-                    }
-                    
-                    // 5. Handle incoming calls from other players
-                    peer.on('call', (call) => {
-                        console.log(`Incoming call from ${call.peer}`);
-                        call.answer(localStream); // Answer the call with our stream
-                        handleNewVoiceConnection(call);
-                    });
-                    
-                    // 6. Proactively call anyone *already* in voice
-                    const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.peerId);
-                    for (const player of otherPlayersInVoice) {
-                        callPlayer(player.peerId);
-                    }
-                });
-                
-                peer.on('error', (err) => {
-                    console.error("PeerJS Error:", err);
-                    showMessage(`Voice Chat Error: ${err.message}. Please try rejoining.`);
-                    cleanupAllVoice(); // Reset on error
-                });
+                voiceChatButton.textContent = "Voice Joined 🎙️";
+                muteSelfButton.classList.remove('hidden');
+
+                // Update our state in Firestore
+                const newPlayers = localGameData.players.map(p => 
+                    p.userId === userId ? { ...p, inVoice: true } : p
+                );
+                await updateDoc(doc(db, getRoomPath()), { players: newPlayers });
 
             } catch (err) {
                 console.error("Error joining voice chat:", err);
@@ -1240,54 +1258,9 @@
                 cleanupAllVoice();
             }
         }
-        
-        /**
-         * NEW: Calls a specific PeerJS ID.
-         * @param {string} peerId - The PeerJS ID of the player to call.
-         */
-        function callPlayer(peerId) {
-             if (!peer || !localStream) return;
-             if (voiceConnections[peerId]) return; // Already connected
-             
-             console.log(`Calling ${peerId}`);
-             const call = peer.call(peerId, localStream);
-             handleNewVoiceConnection(call);
-        }
-        
-        /**
-         * NEW: Manages a new voice connection (incoming or outgoing).
-         * @param {Peer.MediaConnection} call - The PeerJS media connection.
-         */
-        function handleNewVoiceConnection(call) {
-            const peerId = call.peer;
-            voiceConnections[peerId] = call;
-
-            call.on('stream', (remoteStream) => {
-                console.log(`Receiving stream from ${peerId}`);
-                let audioEl = audioElements[peerId];
-                if (!audioEl) {
-                    audioEl = document.createElement('audio');
-                    audioEl.autoplay = true;
-                    audioElements[peerId] = audioEl;
-                    audioStreamsContainer.appendChild(audioEl);
-                }
-                audioEl.srcObject = remoteStream;
-            });
-
-            call.on('close', () => {
-                console.log(`Call with ${peerId} closed.`);
-                cleanupPeerConnection(peerId);
-            });
-            
-            call.on('error', (err) => {
-                 console.error(`Call error with ${peerId}:`, err);
-                 cleanupPeerConnection(peerId);
-            });
-        }
-
 
         /**
-         * NEW: Toggles local microphone mute state.
+         * Toggles local microphone mute state.
          */
         function handleMuteSelf() {
             if (!localStream) return;
@@ -1300,6 +1273,52 @@
             muteSelfButton.classList.toggle('hover:bg-yellow-600', !isMuted);
             muteSelfButton.classList.toggle('bg-red-500', isMuted);
             muteSelfButton.classList.toggle('hover:bg-red-600', isMuted);
+        }
+
+        /**
+         * Cleans up a single peer connection.
+         * @param {string} otherUserId - The user ID to disconnect from.
+         */
+        function cleanupPeerConnection(otherUserId) {
+            if (rtcConnections[otherUserId]) {
+                rtcConnections[otherUserId].close();
+                delete rtcConnections[otherUserId];
+            }
+            if (audioElements[otherUserId]) {
+                audioElements[otherUserId].remove();
+                delete audioElements[otherUserId];
+            }
+            console.log(`Cleaned up connection for ${otherUserId}`);
+        }
+
+        /**
+         * Cleans up all voice chat state (on leave/logout).
+         */
+        async function cleanupAllVoice() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            inVoiceChat = false;
+            
+            if (localGameData) {
+                const newPlayers = localGameData.players.map(p => 
+                    p.userId === userId ? { ...p, inVoice: false, offers: [], answers: [], iceCandidates: [] } : p
+                );
+                await updateDoc(doc(db, getRoomPath()), { players: newPlayers });
+            }
+
+            Object.keys(rtcConnections).forEach(cleanupPeerConnection);
+            rtcConnections = {};
+            audioElements = {};
+            audioStreamsContainer.innerHTML = '';
+            
+            muteSelfButton.classList.add('hidden');
+            voiceChatButton.classList.add('hidden');
+            voiceChatButton.disabled = false;
+            voiceChatButton.textContent = "Join Voice 🎙️";
+            isMuted = false;
         }
 
         /**
@@ -1710,51 +1729,6 @@
         }
 
 
-        // --- NEW: PeerJS Cleanup Functions ---
-
-        /**
-         * Cleans up a single peer connection.
-         * @param {string} peerId - The PeerJS ID of the player to disconnect from.
-         */
-        function cleanupPeerConnection(peerId) {
-            if (voiceConnections[peerId]) {
-                voiceConnections[peerId].close();
-                delete voiceConnections[peerId];
-            }
-            if (audioElements[peerId]) {
-                audioElements[peerId].remove();
-                delete audioElements[peerId];
-            }
-            console.log(`Cleaned up connection for ${peerId}`);
-        }
-
-        /**
-         * NEW: Cleans up all voice chat state (on leave/logout).
-         */
-        function cleanupAllVoice() {
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
-            
-            if (peer) {
-                peer.destroy();
-                peer = null;
-            }
-
-            Object.keys(voiceConnections).forEach(cleanupPeerConnection);
-            voiceConnections = {};
-            audioElements = {};
-            audioStreamsContainer.innerHTML = '';
-            
-            muteSelfButton.classList.add('hidden');
-            voiceChatButton.classList.add('hidden');
-            voiceChatButton.disabled = false;
-            voiceChatButton.textContent = "Join Voice 🎙️";
-            isMuted = false;
-        }
-
-
         // --- Screen Management ---
         
         function showLoginScreen() {
@@ -1770,7 +1744,7 @@
             currentRoomCode = null;
             isSpectator = false; // Reset spectator flag
             
-            cleanupAllVoice(); // NEW: Clean up all PeerJS state
+            cleanupAllVoice(); // NEW: Clean up all WebRTC state
             
             cancelMove(); 
             hasMovedShipThisTurn = false; 
@@ -1805,7 +1779,10 @@
                 loadingScreen.innerHTML = "<h1>Auth Error</h1><p>Could not sign in. Check console and Firebase settings.</p>";
             }
         }
-
+        
+        /**
+         * Main room listener. Handles game state and WebRTC signaling.
+         */
         function listenToRoom() {
             if (unsubscribeRoom) {
                 unsubscribeRoom();
@@ -1817,26 +1794,11 @@
                     const oldLocalGameData = localGameData;
                     localGameData = doc.data();
                     
-                    // --- PeerJS Connection Management ---
-                    if (peer && localStream) { // Only manage connections if I'm in voice
-                        const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.peerId);
-                        const otherPlayerPeerIds = otherPlayersInVoice.map(p => p.peerId);
-                        
-                        // Connect to new players
-                        for (const player of otherPlayersInVoice) {
-                            if (!voiceConnections[player.peerId]) {
-                                callPlayer(player.peerId);
-                            }
-                        }
-                        
-                        // Disconnect from leavers
-                        for (const peerId in voiceConnections) {
-                            if (!otherPlayerPeerIds.includes(peerId)) {
-                                cleanupPeerConnection(peerId);
-                            }
-                        }
+                    // --- NEW: WebRTC Signaling Logic ---
+                    if (inVoiceChat && !isSpectator) {
+                        handleSignaling(oldLocalGameData, localGameData);
                     }
-                    // --- End PeerJS ---
+                    // --- End WebRTC ---
                     
 
                     // Don't reset move state if I am still the current player
@@ -1885,12 +1847,95 @@
             });
         }
         
-        window.onload = () => {
-            if (typeof Peer === 'undefined') {
-                loadingScreen.innerHTML = "<h1>Error</h1><p>Could not load voice chat library (PeerJS). Please check your internet connection and refresh.</p>";
-                return;
-            }
+        /**
+         * NEW: Handles all WebRTC signaling logic based on state changes.
+         * @param {object} oldData - The previous room data.
+         * @param {object} newData - The new room data.
+         */
+        async function handleSignaling(oldData, newData) {
+            const myPlayer = newData.players.find(p => p.userId === userId);
+            if (!myPlayer || !myPlayer.inVoice) return; // I'm not in voice chat
 
+            const otherPlayers = newData.players.filter(p => p.userId !== userId);
+            
+            for (const player of otherPlayers) {
+                if (player.inVoice) {
+                    // Player is in voice, check if we have a connection
+                    if (!rtcConnections[player.userId]) {
+                        // New connection needed
+                        const pc = createPeerConnection(player.userId);
+                        
+                        // Check if they have an offer for me
+                        const theirOffer = player.offers.find(o => o.target === userId);
+                        if (theirOffer) {
+                            // Answer their offer
+                            console.log(`Answering offer from ${player.userId}`);
+                            await pc.setRemoteDescription(new RTCSessionDescription(theirOffer.offer));
+                            const answer = await pc.createAnswer();
+                            await pc.setLocalDescription(answer);
+                            
+                            const myAnswers = [...myPlayer.answers, { target: player.userId, answer: answer.toJSON() }];
+                            const newPlayers = newData.players.map(p => p.userId === userId ? { ...p, answers: myAnswers } : p);
+                            await updateDoc(doc(db, getRoomPath()), { players: newPlayers });
+
+                        } else {
+                            // I'll make an offer
+                            console.log(`Creating offer for ${player.userId}`);
+                            const offer = await pc.createOffer();
+                            await pc.setLocalDescription(offer);
+                            
+                            const myOffers = [...myPlayer.offers, { target: player.userId, offer: offer.toJSON() }];
+                            const newPlayers = newData.players.map(p => p.userId === userId ? { ...p, offers: myOffers } : p);
+                            await updateDoc(doc(db, getRoomPath()), { players: newPlayers });
+                        }
+                    }
+                    
+                    // Connection exists, check for signals
+                    const pc = rtcConnections[player.userId];
+                    if (!pc) continue; // Still creating
+
+                    // Check for answer
+                    const theirAnswer = player.answers.find(a => a.target === userId);
+                    if (theirAnswer && pc.localDescription && !pc.remoteDescription) {
+                        console.log(`Setting remote answer from ${player.userId}`);
+                        await pc.setRemoteDescription(new RTCSessionDescription(theirAnswer.answer));
+                    }
+                    
+                    // Check for ICE candidates
+                    const oldPlayer = oldData?.players.find(p => p.userId === player.userId);
+                    const oldCandidates = oldPlayer?.iceCandidates || [];
+                    const newCandidates = player.iceCandidates.filter(newCand => {
+                        if (newCand.target !== userId) return false;
+                        // Check if we've already processed this candidate
+                        return !oldCandidates.some(oldCand => 
+                            oldCand.target === userId && 
+                            oldCand.candidate.candidate === newCand.candidate.candidate
+                        );
+                    });
+                    
+                    if (newCandidates.length > 0) {
+                        console.log(`Adding ${newCandidates.length} new ICE candidates from ${player.userId}`);
+                        for (const cand of newCandidates) {
+                            if (pc.remoteDescription) { // Only add if remote description is set
+                                try {
+                                    await pc.addIceCandidate(new RTCIceCandidate(cand.candidate));
+                                } catch (err) {
+                                    console.warn("Error adding ICE candidate:", err);
+                                }
+                            }
+                        }
+                    }
+
+                } else {
+                    // Player left voice
+                    if (rtcConnections[player.userId]) {
+                        cleanupPeerConnection(player.userId);
+                    }
+                }
+            }
+        }
+        
+        window.onload = () => {
             if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
                  loadingScreen.innerHTML = "<h1>Error</h1><p>Firebase is not configured. Please paste your `firebaseConfig` object into the script.</p>";
                 return;
