@@ -676,6 +676,7 @@
          * @returns {object} - The player object.
          */
         function createNewPlayer() {
+            // FIX: Removed serverTimestamp() from here
             return {
                 userId: userId,
                 name: myPlayerName,
@@ -687,7 +688,7 @@
                 isOut: false,
                 ready: false,
                 isSkippingTurn: false,
-                lastSeen: serverTimestamp() // NEW: Add lastSeen on creation
+                // lastSeen will be added in a separate update
             };
         }
 
@@ -995,6 +996,13 @@
                     break;
                     
                 case "playing":
+                     // Ensure currentPlayerIndex is valid before accessing players array
+                    if (roomData.currentPlayerIndex < 0 || roomData.currentPlayerIndex >= roomData.players.length) {
+                        console.error("Invalid currentPlayerIndex in render:", roomData.currentPlayerIndex);
+                        gameStatus.textContent = "Error: Invalid game state."; // Show an error
+                         // Optionally, try to recover or reset state
+                        break; 
+                    }
                     const currentPlayer = roomData.players[roomData.currentPlayerIndex];
                     const isMyTurn = currentPlayer.userId === userId;
                     
@@ -1069,6 +1077,12 @@
                          if (player.userId === userId) return;
                          opponentGridsContainer.innerHTML += createGridHTML(player, false, false);
                     });
+                    
+                    // Stop presence updates on game over
+                    if (presenceIntervalId) {
+                         clearInterval(presenceIntervalId);
+                         presenceIntervalId = null;
+                    }
                     break;
             }
         }
@@ -1137,10 +1151,10 @@
             console.log(`Creating new room: ${newRoomCode}`);
 
             try {
-                const newPlayer = createNewPlayer();
+                const newPlayer = createNewPlayer(); // Without lastSeen
                 const newRoomData = {
                     creatorId: userId,
-                    players: [newPlayer],
+                    players: [newPlayer], // Add player without timestamp first
                     gameState: "waiting", 
                     currentPlayerIndex: 0,
                     gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }],
@@ -1149,6 +1163,11 @@
                     lastMove: null
                 };
                 await setDoc(roomRef, newRoomData);
+
+                // Now, set the timestamp for the creator
+                await updateDoc(roomRef, {
+                    'players.0.lastSeen': serverTimestamp() 
+                });
                 
                 localStorage.setItem('savedRoomCode', currentRoomCode);
                 localStorage.setItem('savedPlayerName', myPlayerName);
@@ -1224,10 +1243,11 @@
                         throw new Error("You were removed from this game. You cannot rejoin.");
                     }
                     // Not out, update name and lastSeen
-                    const newPlayers = roomData.players.map(p => 
-                        p.userId === userId ? { ...p, name: myPlayerName, lastSeen: serverTimestamp() } : p
-                    );
-                    await updateDoc(roomRef, { players: newPlayers });
+                    const playerIndex = roomData.players.findIndex(p => p.userId === userId);
+                    await updateDoc(roomRef, {
+                         [`players.${playerIndex}.name`]: myPlayerName,
+                         [`players.${playerIndex}.lastSeen`]: serverTimestamp()
+                    });
                     isSpectator = false;
                 } else {
                     // New player joining
@@ -1235,11 +1255,25 @@
                         if (roomData.players.length >= MAX_PLAYERS) { 
                             throw new Error(`Room is full (max ${MAX_PLAYERS} players).`);
                         }
-                        const newPlayer = createNewPlayer();
+                        const newPlayer = createNewPlayer(); // Without lastSeen
+                        // Add player first
                         await updateDoc(roomRef, {
                             players: arrayUnion(newPlayer),
                             gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined the room.` })
                         });
+                        // Then immediately update their timestamp
+                        // Need to fetch again briefly to get the index, or derive it carefully
+                        const updatedSnap = await getDoc(roomRef);
+                        const updatedData = updatedSnap.data();
+                        const playerIndex = updatedData.players.findIndex(p => p.userId === userId);
+                        if (playerIndex !== -1) {
+                            await updateDoc(roomRef, {
+                                [`players.${playerIndex}.lastSeen`]: serverTimestamp()
+                            });
+                        } else {
+                            console.error("Could not find newly added player to set timestamp.");
+                        }
+
                         isSpectator = false;
                     } else {
                         // Game in progress, join as spectator
