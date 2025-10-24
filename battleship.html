@@ -1014,10 +1014,17 @@
                             setTimeout(handleSkipTurn, 2000); // 2s delay to show message
                         } else {
                             if (oldLocalGameData) {
-                                const oldPlayer = oldLocalGameData.players[oldLocalGameData.currentPlayerIndex];
-                                if (oldPlayer?.userId !== userId) {
-                                    hasMovedShipThisTurn = false;
+                                // Ensure index is valid before checking old state
+                                if (oldLocalGameData.currentPlayerIndex >= 0 && oldLocalGameData.currentPlayerIndex < oldLocalGameData.players.length) {
+                                    const oldPlayer = oldLocalGameData.players[oldLocalGameData.currentPlayerIndex];
+                                    if (oldPlayer?.userId !== userId) {
+                                        hasMovedShipThisTurn = false;
+                                    }
+                                } else {
+                                     hasMovedShipThisTurn = false; // Reset if old index was invalid
                                 }
+                            } else {
+                                 hasMovedShipThisTurn = false; // Reset if no old data
                             }
 
                             opponentGridsContainer.style.pointerEvents = 'auto'; 
