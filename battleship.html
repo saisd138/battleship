@@ -19,11 +19,19 @@
             --label-size: 20px; /* Mobile size */
         }
         
+        /* NEW: Tablet grid size */
+        @media (min-width: 640px) { /* sm */
+             :root {
+                --cell-size: 28px;
+                --label-size: 28px;
+            }
+        }
+        
         /* Desktop grid sizes */
-        @media (min-width: 640px) {
+        @media (min-width: 1024px) { /* lg */
             :root {
                 --cell-size: 35px; /* Desktop size */
-                --label-size: 5px; /* Desktop size */
+                --label-size: 35px; /* Desktop size */
             }
         }
 
@@ -43,7 +51,7 @@
             transition: all 0.15s ease-in-out;
             position: relative;
         }
-        @media (min-width: 640px) {
+        @media (min-width: 1024px) { /* lg */
             .grid-cell {
                 font-size: 1rem; /* Desktop font size */
             }
@@ -61,7 +69,7 @@
             font-weight: 600;
             color: #6b7280; /* gray-500 */
         }
-        @media (min-width: 640px) {
+        @media (min-width: 1024px) { /* lg */
             .grid-label {
                 font-size: 0.75rem; /* Desktop font size */
             }
@@ -86,7 +94,7 @@
             border-color: #374151; /* gray-700 */
         }
         
-        /* NEW: My grid: placed mine */
+        /* My grid: placed mine */
         .my-grid .grid-cell.mine {
             background-color: #cce7ff; /* light-blue-100 */
             border-color: #a3d5ff;
@@ -101,7 +109,7 @@
         }
 
         /* Opponent grid: active turn hover effect */
-        .opponent-grid.turn-active .grid-cell:not(.miss):not(.hit):not(.mine-hit):hover {
+        .opponent-grid.turn-active .grid-cell:not(.miss):not(.hit):not(.mine-hit):not(.last-move):hover {
             background-color: #fef08a; /* yellow-200 */
             border-color: #fde047; /* yellow-300 */
         }
@@ -121,7 +129,7 @@
             color: #1f2937; /* gray-800 */
         }
         
-        /* NEW: All grids: mine hit */
+        /* All grids: mine hit */
         .grid-cell.mine-hit {
             /* Background-color is set by JS */
             border-color: #ef4444; /* red-500 */
@@ -143,7 +151,7 @@
             box-shadow: 0 0 10px #fde047;
         }
 
-        /* NEW: Style for valid move options */
+        /* Style for valid move options */
         .grid-cell.move-option {
             background-color: #cce7ff;
             border: 2px dashed #facc15; /* yellow-400 */
@@ -151,6 +159,12 @@
         }
         .grid-cell.move-option:hover {
             background-color: #fef9c3; /* yellow-100 */
+        }
+        
+        /* NEW: Last move highlight */
+        .grid-cell.last-move {
+            border: 3px solid #facc15; /* yellow-400 */
+            box-shadow: 0 0 10px #facc15;
         }
 
         /* Player card when out */
@@ -160,8 +174,8 @@
             color: #9ca3af; /* gray-400 */
             
             /* Sizing for Mobile (20*7 + 2*6 + 16*2) = 140+12+32 = 184px */
-            width: 173px; 
-            height: 221px; /* (20*7 + 2*6 + 16*2 + 18+20) ~ 221 */
+            width: calc( (var(--cell-size) * 7) + (2px * 6) + (8px * 2) - 17px );
+            height: calc( (var(--cell-size) * 7) + (2px * 6) + (8px * 2) + 18px + 20px );
 
             display: flex;
             flex-direction: column;
@@ -171,10 +185,8 @@
         }
         
         /* Sizing for Desktop */
-        @media (min-width: 640px) {
+        @media (min-width: 1024px) { /* lg */
             .player-out-card {
-                width: 289px; /* (35*7 + 2*6 + 16*2) = 245+12+32 = 289 */
-                height: 385px;
                 padding: 16px;
             }
         }
@@ -222,20 +234,20 @@
             transform: rotate(-45deg);
         }
 
-        /* NEW: Game event log messages */
+        /* Game event log messages */
         .log-game-event {
             color: #DC2626; /* red-600 */
             font-style: italic;
             font-size: 0.875rem; /* text-sm */
         }
         
-        /* NEW: Chat messages */
+        /* Chat messages */
         .log-chat-message {
             font-size: 0.875rem; /* text-sm */
             word-break: break-word; /* Ensure long messages wrap */
         }
         
-        /* NEW: Kick Button Style */
+        /* Kick Button Style */
         .kick-button {
             font-size: 0.75rem; /* text-xs */
             font-weight: 500;
@@ -246,6 +258,27 @@
         .kick-button:hover {
             color: #991B1B; /* red-800 */
             text-decoration: underline;
+        }
+        
+        /* NEW: In-game kick button (on opponent grid) */
+        .kick-button-ingame {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            background-color: rgba(255, 255, 255, 0.8);
+            color: #DC2626;
+            border: 1px solid #DC2626;
+            border-radius: 4px;
+            padding: 0 4px;
+            font-size: 0.625rem; /* 10px */
+            font-weight: bold;
+            line-height: 1;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .kick-button-ingame:hover {
+            background-color: #DC2626;
+            color: white;
         }
 
 
@@ -304,7 +337,7 @@
                     <span class="text-sm text-gray-500">Room:</span>
                     <span id="room-display" class="text-xl font-bold font-mono text-yellow-500"></span>
                 </div>
-                <!-- NEW: Exit Button -->
+                <!-- Exit Button -->
                 <div class="flex gap-2">
                     <button id="exit-room-button" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-200 text-sm">
                         Exit Room
@@ -336,7 +369,7 @@
                     </div>
 
                     <!-- My Grid Container -->
-                    <div id="my-grid-container" class="bg-white p-2 sm:p-4 rounded-lg shadow-lg">
+                    <div id="my-grid-container" class="bg-white p-2 sm:p-4 rounded-lg shadow-lg relative">
                         <!-- My grid will be inserted here -->
                     </div>
                 </div>
@@ -346,7 +379,8 @@
                     <div class="bg-white p-2 sm:p-4 rounded-lg shadow-lg h-full">
                         <h3 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 text-center sm:text-left">Opponents</h3>
                         <!-- Opponent Grids Area -->
-                        <div id="opponent-grids-container" class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-4 lg:justify-start overflow-y-auto p-1 sm:p-2 bg-gray-50 rounded-md" style="max-height: calc(100vh - 300px);">
+                        <!-- NEW: Responsive grid columns -->
+                        <div id="opponent-grids-container" class="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-wrap justify-center lg:justify-start gap-2 sm:gap-4 overflow-y-auto p-1 sm:p-2 bg-gray-50 rounded-md" style="max-height: calc(100vh - 300px);">
                             <!-- Opponent grids will be inserted here -->
                         </div>
                     </div>
@@ -393,14 +427,11 @@
                     <button id="start-game-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
                         Start Game
                     </button>
-                    <!-- REMOVED Voice chat text -->
                     <p id="start-game-error" class="text-red-500 text-sm mt-2 h-4"></p>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- REMOVED audio-streams div -->
 
     <!-- Generic Message Modal -->
     <div id="message-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
@@ -449,17 +480,16 @@
         // --- Game Constants ---
         const GRID_SIZE = 6;
         const SHIP_COUNT = 5;
-        const MINE_COUNT = 3; // NEW
+        const MINE_COUNT = 3;
         const MAX_PLAYERS = 20;
 
         // --- Global Variables ---
         let app, db, auth;
         let userId, myPlayerName, currentRoomCode;
         let localGameData = null;
+        let oldLocalGameData = null; // Store previous state
         let unsubscribeRoom = null;
         let isSpectator = false;
-        
-        // REMOVED WebRTC Globals
         
         // State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
@@ -515,12 +545,12 @@
         const roomDisplay = document.getElementById('room-display');
         const gameStatus = document.getElementById('game-status');
         const myNameDisplay = document.getElementById('my-name-display');
-        const exitRoomButton = document.getElementById('exit-room-button'); // NEW
+        const exitRoomButton = document.getElementById('exit-room-button');
         
         const setupControls = document.getElementById('setup-controls');
         const setupInstructions = document.getElementById('setup-instructions');
         const shipsPlacedCount = document.getElementById('ships-placed-count');
-        const minesPlacedCount = document.getElementById('mines-placed-count'); // NEW
+        const minesPlacedCount = document.getElementById('mines-placed-count');
         const readyButton = document.getElementById('ready-button');
         
         const myGridContainer = document.getElementById('my-grid-container');
@@ -544,7 +574,6 @@
         const gameOverModal = document.getElementById('game-over-modal');
         const winnerName = document.getElementById('winner-name');
         const playAgainButton = document.getElementById('play-again-button');
-        // REMOVED audioStreamsContainer
 
         // --- Utility Functions ---
 
@@ -629,7 +658,6 @@
                 isOut: false,
                 ready: false,
                 isSkippingTurn: false
-                // REMOVED WebRTC Signaling fields
             };
         }
 
@@ -644,6 +672,12 @@
             const gridClasses = isMe ? 'my-grid' : 'opponent-grid' + (isTurnActive ? ' turn-active' : '');
             let cellsHTML = '';
             const playerColor = player.color || DEFAULT_COLOR;
+            const isCreator = localGameData.creatorId === userId; // NEW: Host check
+            
+            // NEW: In-game kick button for host
+            const kickButtonHTML = (isCreator && !isMe)
+                ? `<button data-kick-id="${player.userId}" class="kick-button-ingame">Kick</button>`
+                : '';
             
             // Add column headers
             cellsHTML += '<div class="grid-label"></div>'; // Empty corner
@@ -712,12 +746,18 @@
                         }
                     }
                     
+                    // NEW: Add last-move highlight
+                    if (localGameData.lastMove && localGameData.lastMove.playerId === player.userId && localGameData.lastMove.cellIndex === i) {
+                        cellClass += ' last-move';
+                    }
+                    
                     cellsHTML += `<div class="${cellClass}" data-player-id="${player.userId}" data-row="${r}" data-col="${c}" style="${style}">${content}</div>`;
                 }
             }
 
             return `
-                <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
+                <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'} relative">
+                    ${kickButtonHTML}
                     <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name}</h3>
                     <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
                     ${player.isSkippingTurn ? '<p class="text-center text-xs sm:text-sm text-red-500 font-bold mb-2">SKIPPING TURN</p>' : ''}
@@ -780,7 +820,7 @@
             
             const myPlayer = roomData.players.find(p => p.userId === userId);
 
-            // NEW: Kicked / Rejoin Logic
+            // Kicked / Rejoin Logic
             if (!myPlayer && !isSpectator) {
                 // Kicked or data mismatch, return to login
                 showMessage("You have been removed from the game.");
@@ -862,7 +902,7 @@
                 case "waiting":
                     gameStatus.textContent = "Waiting for Players... (Share Code!)";
                     waitingRoomControls.classList.remove('hidden');
-                    const isCreator = localGameData.creatorId === userId; // NEW: Check if I am creator
+                    const isCreator = localGameData.creatorId === userId;
                     
                     roomData.players.forEach(player => {
                         const kickButtonHTML = (isCreator && player.userId !== userId)
@@ -888,9 +928,8 @@
                 case "setup":
                     setupControls.classList.remove('hidden');
                     shipsPlacedCount.textContent = myPlayer.shipsPlaced;
-                    minesPlacedCount.textContent = myPlayer.minesPlaced; // NEW
+                    minesPlacedCount.textContent = myPlayer.minesPlaced;
                     
-                    // NEW: Multi-stage setup instructions
                     if (myPlayer.shipsPlaced < SHIP_COUNT) {
                         gameStatus.textContent = "Place Your Ships!";
                         setupInstructions.textContent = `Place your ${SHIP_COUNT} ships. (Click on grid)`;
@@ -916,16 +955,17 @@
                     const isMyTurn = currentPlayer.userId === userId;
                     
                     if (isMyTurn) {
-                        // NEW: Check for skipped turn
                         if (myPlayer.isSkippingTurn) {
                             gameStatus.textContent = "You hit a mine! Skipping your turn...";
                             gameStatus.classList.add('text-red-500');
                             // Skip turn immediately
                             setTimeout(handleSkipTurn, 2000); // 2s delay to show message
                         } else {
-                            const oldPlayer = oldLocalGameData ? oldLocalGameData.players[oldLocalGameData.currentPlayerIndex] : null;
-                            if (oldPlayer?.userId !== userId) {
-                                hasMovedShipThisTurn = false;
+                            if (oldLocalGameData) {
+                                const oldPlayer = oldLocalGameData.players[oldLocalGameData.currentPlayerIndex];
+                                if (oldPlayer?.userId !== userId) {
+                                    hasMovedShipThisTurn = false;
+                                }
                             }
 
                             opponentGridsContainer.style.pointerEvents = 'auto'; 
@@ -1055,21 +1095,21 @@
             try {
                 const newPlayer = createNewPlayer();
                 const newRoomData = {
-                    creatorId: userId, // NEW: Set creator
+                    creatorId: userId,
                     players: [newPlayer],
                     gameState: "waiting", 
                     currentPlayerIndex: 0,
                     gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }],
                     createdAt: serverTimestamp(),
-                    winner: null
+                    winner: null,
+                    lastMove: null // NEW: For last move highlight
                 };
                 await setDoc(roomRef, newRoomData);
                 
-                // NEW: Save to localStorage for reload
                 localStorage.setItem('savedRoomCode', currentRoomCode);
                 localStorage.setItem('savedPlayerName', myPlayerName);
                 
-                isSpectator = false; // You are the creator, not a spectator
+                isSpectator = false;
                 showGameScreen();
                 listenToRoom();
 
@@ -1082,16 +1122,25 @@
             }
         }
 
-        async function handleJoinRoom() {
-            const name = nameInput.value.trim();
-            const roomCode = roomInput.value.trim().toUpperCase();
+        async function handleJoinRoom(isReload = false) {
+            let name, roomCode;
+            
+            if (isReload) {
+                name = localStorage.getItem('savedPlayerName');
+                roomCode = localStorage.getItem('savedRoomCode');
+            } else {
+                name = nameInput.value.trim();
+                roomCode = roomInput.value.trim().toUpperCase();
+            }
 
             if (!name) {
                 loginError.textContent = "Please enter your name.";
+                if (isReload) showLoginScreen(); // Saved data invalid
                 return;
             }
             if (roomCode.length !== 5) {
                 loginError.textContent = "Room code must be 5 characters.";
+                if (isReload) showLoginScreen(); // Saved data invalid
                 return;
             }
             
@@ -1109,6 +1158,11 @@
                 const roomSnap = await getDoc(roomRef);
                 
                 if (!roomSnap.exists()) {
+                    if (isReload) {
+                        // Room doesn't exist anymore, just go to login
+                        showLoginScreen();
+                        return;
+                    }
                     throw new Error("Room not found. Check the code.");
                 } 
                 
@@ -1116,7 +1170,6 @@
                 const isRejoining = roomData.players.find(p => p.userId === userId);
 
                 if (isRejoining) {
-                    // Player rejoining, just update name. Color is preserved.
                     const newPlayers = roomData.players.map(p => 
                         p.userId === userId ? { ...p, name: myPlayerName } : p
                     );
@@ -1143,19 +1196,24 @@
                     }
                 }
                 
-                // NEW: Save to localStorage for reload
-                localStorage.setItem('savedRoomCode', currentRoomCode);
-                localStorage.setItem('savedPlayerName', myPlayerName);
+                if (!isReload) {
+                    localStorage.setItem('savedRoomCode', currentRoomCode);
+                    localStorage.setItem('savedPlayerName', myPlayerName);
+                }
                 
                 showGameScreen();
                 listenToRoom();
                 
             } catch (err) {
                 console.error("Error joining room:", err);
-                loginError.textContent = err.message;
-                joinButton.disabled = false;
-                joinButton.textContent = "Join Game";
-                createRoomButton.disabled = false;
+                if (isReload) {
+                    showLoginScreen();
+                } else {
+                    loginError.textContent = err.message;
+                    joinButton.disabled = false;
+                    joinButton.textContent = "Join Game";
+                    createRoomButton.disabled = false;
+                }
             }
         }
         
@@ -1187,7 +1245,6 @@
             }
         }
         
-        // REMOVED ALL WebRTC Functions (handleJoinVoiceChat, etc.)
         
         /**
          * Handles clicking on a grid cell (for setup, moving, or attacking).
@@ -1197,6 +1254,13 @@
             const cellEl = e.target.closest('.grid-cell');
             if (!cellEl) return;
             if (!localGameData || isSpectator) return; // Spectators can't click grids
+            
+            // NEW: Handle in-game kick
+            const kickButton = e.target.closest('.kick-button-ingame');
+            if (kickButton) {
+                handleKickPlayer(e);
+                return;
+            }
             
             const row = parseInt(cellEl.dataset.row);
             const col = parseInt(cellEl.dataset.col);
@@ -1374,7 +1438,7 @@
             
             const targetCell = targetPlayer.grid[cellIndex];
             const wasHit = targetCell === 1;
-            const wasMine = targetCell === 2; // NEW
+            const wasMine = targetCell === 2;
             const coord = toGridCoord(cellIndex);
             
             let logMsg = { type: 'game', message: "" };
@@ -1398,29 +1462,26 @@
                     newIsOut = true;
                     newLogMessages.push({ type: 'game', message: `${targetPlayer.name} has been eliminated!` });
                 }
-            } else if (wasMine) { // NEW: Mine logic
+            } else if (wasMine) {
                 logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... IT'S A MINE! 💥`;
                 newGrid[cellIndex] = { type: 'mine-hit', attackerId: attacker.userId, attackerColor: attackerColor };
                 
-                // Mark attacker to skip their next turn
                 newPlayers = newPlayers.map(p => 
                     p.userId === attacker.userId ? { ...p, isSkippingTurn: true } : p
                 );
                 newLogMessages.push({ type: 'game', message: `${attacker.name} hit a mine and will skip their next turn!` });
             } else {
-                // Was a miss
                 logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... MISS! X`;
                 newGrid[cellIndex] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor };
             }
             
-            newLogMessages.unshift(logMsg); // Add main log message to start
+            newLogMessages.unshift(logMsg);
             
-            // Update target player
             newPlayers = newPlayers.map(p => 
                 p.userId === targetPlayerId ? { ...p, grid: newGrid, shipsLeft: newShipsLeft, isOut: newIsOut } : p
             );
 
-            // 2. Check for game over
+            // Check for game over
             const playersStillIn = newPlayers.filter(p => !p.isOut);
             if (playersStillIn.length === 1) {
                 newGameState = "over";
@@ -1431,8 +1492,7 @@
                 newLogMessages.push({ type: 'game', message: "GAME OVER! It's a draw!" });
             }
             
-            // 3. Determine next turn
-            // Turn only advances on a MISS or a MINE HIT
+            // Determine next turn
             if (newGameState === "playing" && !wasHit) {
                 do {
                     nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
@@ -1446,7 +1506,8 @@
                     gameState: newGameState,
                     winner: newWinner,
                     currentPlayerIndex: nextPlayerIndex,
-                    gameLog: arrayUnion(...newLogMessages) 
+                    gameLog: arrayUnion(...newLogMessages),
+                    lastMove: { playerId: targetPlayerId, cellIndex: cellIndex } // NEW: Save last move
                 });
             } catch (err) {
                 console.error("Error during attack:", err);
@@ -1455,7 +1516,7 @@
         }
 
         /**
-         * NEW: Handles the automatic turn skip after hitting a mine.
+         * Handles the automatic turn skip after hitting a mine.
          */
         async function handleSkipTurn() {
             if (!localGameData) return;
@@ -1484,7 +1545,7 @@
 
 
         /**
-         * NEW: Handles sending a chat message.
+         * Handles sending a chat message.
          */
         async function handleSendChat() {
             const message = chatInput.value.trim();
@@ -1597,30 +1658,76 @@
         }
         
         /**
-         * NEW: Handles kicking a player from the waiting room.
+         * NEW: Handles kicking a player (from any state) or exiting.
          * @param {Event} e - The click event.
          */
-        async function handleKickPlayer(e) {
-            const kickId = e.target.dataset.kickId;
-            if (!kickId || !localGameData || localGameData.creatorId !== userId) return;
+        async function handleKickOrExit(e, exitType) {
+            let kickId;
+            let logMessage;
             
-            if (localGameData.gameState !== 'waiting') {
-                showMessage("Can only kick players from the waiting room.");
-                return;
+            if (exitType === 'kick') {
+                kickId = e.target.dataset.kickId;
+                if (!kickId || !localGameData || localGameData.creatorId !== userId) return;
+            } else {
+                // Self-exit
+                kickId = userId;
+            }
+            
+            const kickedPlayer = localGameData.players.find(p => p.userId === kickId);
+            if (!kickedPlayer) return;
+
+            // Mark player as 'out'. Don't remove, to preserve scores/grids.
+            let newPlayers = localGameData.players.map(p => 
+                p.userId === kickId ? { ...p, isOut: true, shipsLeft: 0 } : p
+            );
+
+            if (exitType === 'kick') {
+                logMessage = { type: 'game', message: `${kickedPlayer.name} was kicked by the host.` };
+            } else {
+                logMessage = { type: 'game', message: `${kickedPlayer.name} left the game.` };
             }
 
-            const newPlayers = localGameData.players.filter(p => p.userId !== kickId);
-            const kickedPlayerName = localGameData.players.find(p => p.userId === kickId)?.name || 'A player';
+            let newGameState = localGameData.gameState;
+            let newWinner = null;
+            let newPlayerIndex = localGameData.currentPlayerIndex;
+            
+            // Check for game over
+            const playersStillIn = newPlayers.filter(p => !p.isOut);
+            if (newGameState !== 'waiting' && newGameState !== 'setup') {
+                if (playersStillIn.length === 1) {
+                    newGameState = "over";
+                    newWinner = playersStillIn[0].userId;
+                    logMessage = { type: 'game', message: `${kickedPlayer.name} left. ${newWinner.name} is the winner!` };
+                } else if (playersStillIn.length === 0) {
+                    newGameState = "over";
+                    logMessage = { type: 'game', message: "Everyone left. It's a draw!" };
+                }
+            }
+
+            // Advance turn if the kicked player was the current player
+            if (newGameState === 'playing' && localGameData.players[newPlayerIndex].userId === kickId) {
+                 do {
+                    newPlayerIndex = (newPlayerIndex + 1) % newPlayers.length;
+                } while (newPlayers[newPlayerIndex].isOut && playersStillIn.length > 0);
+            }
             
             const roomRef = doc(db, getRoomPath());
             try {
                 await updateDoc(roomRef, { 
                     players: newPlayers,
-                    gameLog: arrayUnion({ type: 'game', message: `${kickedPlayerName} was kicked by the host.` })
+                    gameLog: arrayUnion(logMessage),
+                    gameState: newGameState,
+                    winner: newWinner,
+                    currentPlayerIndex: newPlayerIndex
                 });
+                
+                if (exitType === 'exit') {
+                    showLoginScreen(); // Go to login screen after self-exit
+                }
+                
             } catch (err) {
-                console.error("Error kicking player:", err);
-                showMessage("Error kicking player. Please try again.");
+                console.error("Error kicking/exiting player:", err);
+                showMessage("Error removing player. Please try again.");
             }
         }
 
@@ -1631,9 +1738,8 @@
             loadingScreen.classList.add('hidden');
             gameScreen.classList.add('hidden');
             loginScreen.classList.remove('hidden');
-            exitRoomButton.classList.add('hidden'); // NEW
+            exitRoomButton.classList.add('hidden');
             
-            // NEW: Clear saved session
             localStorage.removeItem('savedRoomCode');
             localStorage.removeItem('savedPlayerName');
             
@@ -1643,8 +1749,9 @@
             }
             
             localGameData = null;
+            oldLocalGameData = null;
             currentRoomCode = null;
-            isSpectator = false; // Reset spectator flag
+            isSpectator = false;
             cancelMove(); 
             hasMovedShipThisTurn = false; 
             
@@ -1658,7 +1765,7 @@
             loadingScreen.classList.add('hidden');
             loginScreen.classList.add('hidden');
             gameScreen.classList.remove('hidden');
-            exitRoomButton.classList.remove('hidden'); // NEW
+            exitRoomButton.classList.remove('hidden');
         }
 
         // --- Firebase Initialization ---
@@ -1683,26 +1790,33 @@
             const roomRef = doc(db, getRoomPath());
             unsubscribeRoom = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
-                    const oldLocalGameData = localGameData;
+                    oldLocalGameData = localGameData; // Save previous state
                     localGameData = doc.data();
                     
-                    // Don't reset move state if I am still the current player
                     if (!isSpectator) {
                         const myPlayer = localGameData.players.find(p => p.userId === userId);
-                        // NEW: Check if I was kicked
                         if (!myPlayer) {
-                            showMessage("You were kicked from the room.");
+                            showMessage("You were removed from the room.");
                             showLoginScreen();
                             return;
                         }
                         
-                        const oldPlayerIndex = oldLocalGameData ? oldLocalGameData.currentPlayerIndex : -1;
-                        const newPlayerIndex = localGameData.currentPlayerIndex;
-                        const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
+                        // NEW: If I am marked as 'out', go to login
+                        if (myPlayer.isOut) {
+                            showMessage("You have been eliminated or removed from the game.");
+                            showLoginScreen();
+                            return;
+                        }
                         
-                        if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
-                            hasMovedShipThisTurn = false;
-                            cancelMove(); 
+                        if (oldLocalGameData) {
+                            const oldPlayerIndex = oldLocalGameData.currentPlayerIndex;
+                            const newPlayerIndex = localGameData.currentPlayerIndex;
+                            const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
+                            
+                            if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
+                                hasMovedShipThisTurn = false;
+                                cancelMove(); 
+                            }
                         }
                     }
 
@@ -1757,16 +1871,12 @@
                         userId = user.uid;
                         console.log("Authenticated with userId:", userId);
                         
-                        // NEW: Reload logic
                         const savedRoomCode = localStorage.getItem('savedRoomCode');
                         const savedPlayerName = localStorage.getItem('savedPlayerName');
                         
                         if (savedRoomCode && savedPlayerName) {
                             console.log(`Found saved session: ${savedPlayerName} in ${savedRoomCode}`);
-                            myPlayerName = savedPlayerName;
-                            currentRoomCode = savedRoomCode;
-                            showGameScreen();
-                            listenToRoom(); // This will auto-handle spectator vs. player vs. kicked
+                            handleJoinRoom(true); // Attempt to rejoin
                         } else {
                             showLoginScreen(); 
                         }
@@ -1779,9 +1889,9 @@
 
                 // --- Bind Event Listeners ---
                 createRoomButton.addEventListener('click', handleCreateRoom);
-                joinButton.addEventListener('click', handleJoinRoom);
+                joinButton.addEventListener('click', () => handleJoinRoom(false));
                 startGameButton.addEventListener('click', handleStartGame);
-                exitRoomButton.addEventListener('click', showLoginScreen); // NEW
+                exitRoomButton.addEventListener('click', (e) => handleKickOrExit(e, 'exit'));
                 
                 myGridContainer.addEventListener('click', handleGridClick);
                 opponentGridsContainer.addEventListener('click', handleGridClick);
@@ -1789,7 +1899,11 @@
                 readyButton.addEventListener('click', handleReadyClick);
                 
                 roomColorPicker.addEventListener('click', handleColorSelectInRoom); 
-                playerListContainer.addEventListener('click', handleKickPlayer); // NEW
+                playerListContainer.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('kick-button')) {
+                        handleKickOrExit(e, 'kick');
+                    }
+                });
                 
                 chatSendButton.addEventListener('click', handleSendChat);
                 chatInput.addEventListener('keyup', (e) => {
@@ -1803,7 +1917,7 @@
                 });
                 
                 playAgainButton.addEventListener('click', () => {
-                    showLoginScreen(); // NEW: Go to login screen instead of reload
+                    showLoginScreen();
                 });
 
                 roomInput.addEventListener('keyup', (e) => {
