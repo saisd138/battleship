@@ -161,7 +161,7 @@
             background-color: #fef9c3; /* yellow-100 */
         }
         
-        /* NEW: Last move highlight */
+        /* Last move highlight */
         .grid-cell.last-move {
             border: 3px solid #facc15; /* yellow-400 */
             box-shadow: 0 0 10px #facc15;
@@ -260,7 +260,7 @@
             text-decoration: underline;
         }
         
-        /* NEW: In-game kick button (on opponent grid) */
+        /* In-game kick button (on opponent grid) */
         .kick-button-ingame {
             position: absolute;
             top: 2px;
@@ -351,9 +351,11 @@
             </div>
 
             <!-- Main Game Layout -->
+            <!-- FIX: Responsive layout classes -->
             <div class="flex flex-col lg:flex-row gap-6">
 
                 <!-- Left Column (My Grid + Setup) -->
+                <!-- FIX: Added lg:w-auto to prevent shrinking -->
                 <div class="flex flex-col items-center lg:items-start flex-shrink-0 w-full lg:w-auto">
                     <!-- Setup Controls -->
                     <div id="setup-controls" class="hidden bg-white p-4 rounded-lg shadow-lg mb-6 text-center">
@@ -375,11 +377,12 @@
                 </div>
 
                 <!-- Right Column (Opponent Grids) -->
-                <div class="flex-grow min-w-0">
+                <!-- FIX: Added flex-1 to fill remaining space -->
+                <div class="flex-1 min-w-0">
                     <div class="bg-white p-2 sm:p-4 rounded-lg shadow-lg h-full">
                         <h3 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 text-center sm:text-left">Opponents</h3>
                         <!-- Opponent Grids Area -->
-                        <!-- NEW: Responsive grid columns -->
+                        <!-- Responsive grid columns -->
                         <div id="opponent-grids-container" class="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-wrap justify-center lg:justify-start gap-2 sm:gap-4 overflow-y-auto p-1 sm:p-2 bg-gray-50 rounded-md" style="max-height: calc(100vh - 300px);">
                             <!-- Opponent grids will be inserted here -->
                         </div>
@@ -672,9 +675,8 @@
             const gridClasses = isMe ? 'my-grid' : 'opponent-grid' + (isTurnActive ? ' turn-active' : '');
             let cellsHTML = '';
             const playerColor = player.color || DEFAULT_COLOR;
-            const isCreator = localGameData.creatorId === userId; // NEW: Host check
+            const isCreator = localGameData.creatorId === userId;
             
-            // NEW: In-game kick button for host
             const kickButtonHTML = (isCreator && !isMe)
                 ? `<button data-kick-id="${player.userId}" class="kick-button-ingame">Kick</button>`
                 : '';
@@ -746,7 +748,6 @@
                         }
                     }
                     
-                    // NEW: Add last-move highlight
                     if (localGameData.lastMove && localGameData.lastMove.playerId === player.userId && localGameData.lastMove.cellIndex === i) {
                         cellClass += ' last-move';
                     }
@@ -1102,7 +1103,7 @@
                     gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }],
                     createdAt: serverTimestamp(),
                     winner: null,
-                    lastMove: null // NEW: For last move highlight
+                    lastMove: null
                 };
                 await setDoc(roomRef, newRoomData);
                 
@@ -1170,6 +1171,15 @@
                 const isRejoining = roomData.players.find(p => p.userId === userId);
 
                 if (isRejoining) {
+                    // Player rejoining, check if they are marked as 'out'
+                    if (isRejoining.isOut) {
+                         if (isReload) {
+                            showLoginScreen(); // Was kicked/left, clear session
+                            return;
+                        }
+                        throw new Error("You were removed from this game. You cannot rejoin.");
+                    }
+                    // Not out, just update name
                     const newPlayers = roomData.players.map(p => 
                         p.userId === userId ? { ...p, name: myPlayerName } : p
                     );
@@ -1255,10 +1265,9 @@
             if (!cellEl) return;
             if (!localGameData || isSpectator) return; // Spectators can't click grids
             
-            // NEW: Handle in-game kick
             const kickButton = e.target.closest('.kick-button-ingame');
             if (kickButton) {
-                handleKickPlayer(e);
+                handleKickOrExit(e, 'kick');
                 return;
             }
             
@@ -1507,7 +1516,7 @@
                     winner: newWinner,
                     currentPlayerIndex: nextPlayerIndex,
                     gameLog: arrayUnion(...newLogMessages),
-                    lastMove: { playerId: targetPlayerId, cellIndex: cellIndex } // NEW: Save last move
+                    lastMove: { playerId: targetPlayerId, cellIndex: cellIndex }
                 });
             } catch (err) {
                 console.error("Error during attack:", err);
@@ -1658,7 +1667,7 @@
         }
         
         /**
-         * NEW: Handles kicking a player (from any state) or exiting.
+         * Handles kicking a player (from any state) or exiting.
          * @param {Event} e - The click event.
          */
         async function handleKickOrExit(e, exitType) {
@@ -1697,7 +1706,7 @@
                 if (playersStillIn.length === 1) {
                     newGameState = "over";
                     newWinner = playersStillIn[0].userId;
-                    logMessage = { type: 'game', message: `${kickedPlayer.name} left. ${newWinner.name} is the winner!` };
+                    logMessage = { type: 'game', message: `${kickedPlayer.name} left. ${playersStillIn[0].name} is the winner!` };
                 } else if (playersStillIn.length === 0) {
                     newGameState = "over";
                     logMessage = { type: 'game', message: "Everyone left. It's a draw!" };
@@ -1705,7 +1714,7 @@
             }
 
             // Advance turn if the kicked player was the current player
-            if (newGameState === 'playing' && localGameData.players[newPlayerIndex].userId === kickId) {
+            if (newGameState === 'playing' && localGameData.players.length > 0 && localGameData.players[newPlayerIndex].userId === kickId) {
                  do {
                     newPlayerIndex = (newPlayerIndex + 1) % newPlayers.length;
                 } while (newPlayers[newPlayerIndex].isOut && playersStillIn.length > 0);
@@ -1801,7 +1810,7 @@
                             return;
                         }
                         
-                        // NEW: If I am marked as 'out', go to login
+                        // If I am marked as 'out', go to login
                         if (myPlayer.isOut) {
                             showMessage("You have been eliminated or removed from the game.");
                             showLoginScreen();
@@ -1834,6 +1843,7 @@
                                 myGridContainer.style.pointerEvents = 'none';
                             } else if (shipToMoveIndex !== null) {
                                 opponentGridsContainer.style.pointerEvents = 'none';
+
                             }
                         }
                     }
