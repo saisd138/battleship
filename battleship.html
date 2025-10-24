@@ -270,9 +270,18 @@
         <div id="game-screen" class="hidden">
             <!-- Header -->
             <div class="bg-white p-4 rounded-lg shadow-lg mb-6 flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0">
-                <div>
+                <div class="flex items-center gap-2">
                     <span class="text-sm text-gray-500">Room:</span>
                     <span id="room-display" class="text-xl font-bold font-mono text-yellow-500"></span>
+                </div>
+                <!-- Voice Chat Buttons -->
+                <div class="flex gap-2">
+                    <button id="voice-chat-button" class="hidden bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-200 text-sm">
+                        Join Voice 🎙️
+                    </button>
+                    <button id="mute-self-button" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-200 text-sm">
+                        Mute Self 🔇
+                    </button>
                 </div>
                 <h2 id="game-status" class="text-2xl font-bold text-center text-cyan-600">Waiting for players...</h2>
                 <div>
@@ -285,7 +294,6 @@
             <div class="flex flex-col lg:flex-row gap-6">
 
                 <!-- Left Column (My Grid + Setup) -->
-                <!-- MODIFIED: Added flex-col to group my grid and setup controls -->
                 <div class="flex flex-col items-center lg:items-start flex-shrink-0 w-full lg:w-auto">
                     <!-- Setup Controls -->
                     <div id="setup-controls" class="hidden bg-white p-4 rounded-lg shadow-lg mb-6 text-center">
@@ -297,24 +305,16 @@
                     </div>
 
                     <!-- My Grid Container -->
-                    <!-- MODIFIED: Added responsive padding -->
                     <div id="my-grid-container" class="bg-white p-2 sm:p-4 rounded-lg shadow-lg">
-                        <!-- My Turn Actions (REMOVED) -->
-                        <div id="my-turn-actions" class="hidden mb-4 text-center space-x-4">
-                            <!-- This container is now hidden by default and no longer used -->
-                        </div>
-
                         <!-- My grid will be inserted here -->
                     </div>
                 </div>
 
                 <!-- Right Column (Opponent Grids) -->
                 <div class="flex-grow min-w-0">
-                    <!-- MODIFIED: responsive padding -->
                     <div class="bg-white p-2 sm:p-4 rounded-lg shadow-lg h-full">
                         <h3 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 text-center sm:text-left">Opponents</h3>
                         <!-- Opponent Grids Area -->
-                        <!-- MODIFIED: Grid layout for mobile, flex for desktop -->
                         <div id="opponent-grids-container" class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-4 lg:justify-start overflow-y-auto p-1 sm:p-2 bg-gray-50 rounded-md" style="max-height: calc(100vh - 300px);">
                             <!-- Opponent grids will be inserted here -->
                         </div>
@@ -323,13 +323,12 @@
             </div>
             
             <!-- Game Log (MOVED) -->
-            <!-- This is now outside the flex layout, at the bottom -->
             <div class="mt-6">
                 <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log / Chat</h3>
                 <div id="game-log-container" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
                     <!-- Log messages will be inserted here -->
                 </div>
-                <!-- NEW: Chat Input -->
+                <!-- Chat Input -->
                 <div id="chat-controls" class="mt-2 hidden">
                     <div class="flex gap-2">
                         <input type="text" id="chat-input" class="flex-grow bg-white border border-gray-300 rounded-md p-2 text-sm text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="Type a message...">
@@ -362,11 +361,15 @@
                     <button id="start-game-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
                         Start Game
                     </button>
+                    <p class="text-gray-600 text-sm mt-4">Don't forget to join the <b class="text-green-600">Voice Chat</b>! (Button is in the header)</p>
                     <p id="start-game-error" class="text-red-500 text-sm mt-2 h-4"></p>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- NEW: Container for hidden audio elements -->
+    <div id="audio-streams" class="hidden"></div>
 
     <!-- Generic Message Modal -->
     <div id="message-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
@@ -409,7 +412,13 @@
             onSnapshot, 
             arrayUnion, 
             serverTimestamp,
-            setLogLevel
+            setLogLevel,
+            collection, // NEW
+            query,       // NEW
+            where,       // NEW
+            addDoc,      // NEW
+            deleteDoc,   // NEW
+            writeBatch   // NEW
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Game Constants ---
@@ -422,7 +431,21 @@
         let userId, myPlayerName, currentRoomCode;
         let localGameData = null;
         let unsubscribeRoom = null;
-        let isSpectator = false; // NEW: Spectator mode flag
+        let isSpectator = false;
+        
+        // --- NEW: WebRTC Voice Chat Globals ---
+        let localStream = null;
+        let peerConnections = {}; // { otherPlayerId: RTCPeerConnection }
+        let audioElements = {};   // { otherPlayerId: HTMLAudioElement }
+        let isMuted = false;
+        let unsubscribeSignals = null;
+        // Public STUN servers
+        const stunServers = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
         
         // State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
@@ -478,6 +501,8 @@
         const roomDisplay = document.getElementById('room-display');
         const gameStatus = document.getElementById('game-status');
         const myNameDisplay = document.getElementById('my-name-display');
+        const voiceChatButton = document.getElementById('voice-chat-button');
+        const muteSelfButton = document.getElementById('mute-self-button');
         
         const setupControls = document.getElementById('setup-controls');
         const setupInstructions = document.getElementById('setup-instructions');
@@ -488,12 +513,9 @@
         const opponentGridsContainer = document.getElementById('opponent-grids-container');
         const gameLogContainer = document.getElementById('game-log-container');
 
-        // NEW: Chat elements
         const chatControls = document.getElementById('chat-controls');
         const chatInput = document.getElementById('chat-input');
         const chatSendButton = document.getElementById('chat-send-button');
-
-        const myTurnActions = document.getElementById('my-turn-actions');
         
         const waitingRoomControls = document.getElementById('waiting-room-controls');
         const playerListContainer = document.getElementById('player-list-container');
@@ -508,6 +530,7 @@
         const gameOverModal = document.getElementById('game-over-modal');
         const winnerName = document.getElementById('winner-name');
         const playAgainButton = document.getElementById('play-again-button');
+        const audioStreamsContainer = document.getElementById('audio-streams');
 
         // --- Utility Functions ---
 
@@ -540,6 +563,13 @@
          */
         function getRoomPath() {
             return `artifacts/${appId}/public/data/battleship_rooms/${currentRoomCode}`;
+        }
+
+        /**
+         * NEW: Gets the Firestore path for the WebRTC signaling collection.
+         */
+        function getSignalsCollectionRef() {
+            return collection(db, getRoomPath(), 'webrtc_signals');
         }
 
         /**
@@ -589,7 +619,8 @@
                 shipsPlaced: 0,
                 shipsLeft: SHIP_COUNT, 
                 isOut: false,
-                ready: false 
+                ready: false,
+                voiceJoined: false // NEW
             };
         }
 
@@ -665,7 +696,7 @@
 
             return `
                 <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
-                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name}</h3>
+                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name} ${player.voiceJoined ? '🎙️' : ''}</h3>
                     <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
                     <div class="grid-wrapper">
                         ${cellsHTML}
@@ -728,6 +759,8 @@
 
             // NEW: Spectator check
             if (!myPlayer && !isSpectator) {
+                // Kicked or data mismatch, return to login
+                showMessage("An error occurred. Returning to login screen.");
                 showLoginScreen();
                 return;
             }
@@ -746,7 +779,6 @@
             setupControls.classList.add('hidden');
             waitingRoomControls.classList.add('hidden');
             gameOverModal.classList.add('hidden');
-            myTurnActions.classList.add('hidden'); 
             chatControls.classList.add('hidden'); // Hide chat by default
             
             // Render Game Log
@@ -798,7 +830,7 @@
                     winnerName.textContent = winner ? winner.name : 'Unknown';
                     gameOverModal.classList.remove('hidden');
                 }
-                chatControls.classList.remove('hidden'); // Show chat for spectators
+                chatControls.classList.add('hidden'); // Spectators cannot chat
                 return; // End render function for spectators
             }
 
@@ -811,14 +843,14 @@
                     roomData.players.forEach(player => {
                         const playerCard = `
                             <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center">
-                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name}</h3>
+                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name} ${player.voiceJoined ? '🎙️' : ''}</h3>
                                 ${player.color ? '' : '<p class="text-sm text-red-500">Choosing color...</p>'}
                             </div>
                         `;
                         playerListContainer.innerHTML += playerCard;
                     });
                     
-                    chatControls.classList.remove('hidden'); // Show chat
+                    chatControls.classList.remove('hidden'); // Show chat for players
                     renderColorPicker(roomData);
                     break;
 
@@ -976,7 +1008,7 @@
                     players: [newPlayer],
                     gameState: "waiting", 
                     currentPlayerIndex: 0,
-                    gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }], // UPDATED
+                    gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }],
                     createdAt: serverTimestamp(),
                     winner: null
                 };
@@ -1043,13 +1075,12 @@
                         const newPlayer = createNewPlayer();
                         await updateDoc(roomRef, {
                             players: arrayUnion(newPlayer),
-                            gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined the room.` }) // UPDATED
+                            gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined the room.` })
                         });
                         isSpectator = false;
                     } else {
                         // Game in progress, join as spectator
                         isSpectator = true;
-                        // NEW: Add log message for spectator
                         await updateDoc(roomRef, {
                              gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined as a spectator.` })
                         });
@@ -1087,7 +1118,7 @@
             try {
                 await updateDoc(roomRef, {
                     gameState: "setup",
-                    gameLog: arrayUnion({ type: 'game', message: "The game is starting! Place your ships." }) // UPDATED
+                    gameLog: arrayUnion({ type: 'game', message: "The game is starting! Place your ships." })
                 });
             } catch (err) {
                 console.error("Error starting game:", err);
@@ -1096,6 +1127,67 @@
             }
         }
         
+        /**
+         * NEW: Handles joining the integrated voice chat.
+         */
+        async function handleJoinVoiceChat() {
+            if (localStream || isSpectator) return; // Already joined or is spectator
+
+            voiceChatButton.disabled = true;
+            voiceChatButton.textContent = "Joining...";
+
+            try {
+                // 1. Get user's microphone
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                
+                // 2. Update UI
+                voiceChatButton.textContent = "Voice Joined 🎙️";
+                muteSelfButton.classList.remove('hidden');
+                
+                // 3. Listen for signals from other players
+                listenForSignals();
+                
+                // 4. Update our state in Firestore to notify others
+                // This will trigger *their* listenToRoom() to connect to *us*
+                const roomRef = doc(db, getRoomPath());
+                const myPlayer = localGameData.players.find(p => p.userId === userId);
+                if (myPlayer) {
+                    const newPlayers = localGameData.players.map(p => 
+                        p.userId === userId ? { ...p, voiceJoined: true } : p
+                    );
+                    await updateDoc(roomRef, { players: newPlayers });
+                }
+                
+                // 5. Proactively connect to anyone *already* in voice
+                const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.voiceJoined);
+                for (const player of otherPlayersInVoice) {
+                    createPeerConnection(player.userId, true); // true = I am the initiator
+                }
+
+            } catch (err) {
+                console.error("Error joining voice chat:", err);
+                showMessage("Could not access microphone. Please check permissions.");
+                voiceChatButton.disabled = false;
+                voiceChatButton.textContent = "Join Voice 🎙️";
+            }
+        }
+
+        /**
+         * NEW: Toggles local microphone mute state.
+         */
+        function handleMuteSelf() {
+            if (!localStream) return;
+            isMuted = !isMuted;
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = !isMuted;
+            });
+            muteSelfButton.textContent = isMuted ? "Unmute 🎙️" : "Mute Self 🔇";
+            muteSelfButton.classList.toggle('bg-yellow-500', !isMuted);
+            muteSelfButton.classList.toggle('hover:bg-yellow-600', !isMuted);
+            muteSelfButton.classList.toggle('bg-red-500', isMuted);
+            muteSelfButton.classList.toggle('hover:bg-red-600', isMuted);
+        }
+
         /**
          * Handles clicking on a grid cell (for setup, moving, or attacking).
          * @param {Event} e - The click event.
@@ -1214,7 +1306,7 @@
                         players: newPlayers,
                         gameState: "playing",
                         currentPlayerIndex: 0, 
-                        gameLog: arrayUnion({ type: 'game', message: "All players are ready! The battle begins!" }) // UPDATED
+                        gameLog: arrayUnion({ type: 'game', message: "All players are ready! The battle begins!" })
                     });
                 } else {
                     await updateDoc(roomRef, { players: newPlayers });
@@ -1246,7 +1338,7 @@
             
             const wasHit = targetPlayer.grid[cellIndex] === 1;
             const coord = toGridCoord(cellIndex);
-            let logMsg = { type: 'game', message: `${attacker.name} attacked ${targetPlayer.name} at ${coord}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}` }; // UPDATED
+            let logMsg = { type: 'game', message: `${attacker.name} attacked ${targetPlayer.name} at ${coord}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}` };
             let newLogMessages = [logMsg];
             
             let newPlayers = [...localGameData.players];
@@ -1270,7 +1362,7 @@
                 newShipsLeft--;
                 if (newShipsLeft === 0) {
                     newIsOut = true;
-                    newLogMessages.push({ type: 'game', message: `${targetPlayer.name} has been eliminated!` }); // UPDATED
+                    newLogMessages.push({ type: 'game', message: `${targetPlayer.name} has been eliminated!` });
                 }
             }
             
@@ -1283,10 +1375,10 @@
             if (playersStillIn.length === 1) {
                 newGameState = "over";
                 newWinner = playersStillIn[0].userId;
-                newLogMessages.push({ type: 'game', message: `GAME OVER! ${playersStillIn[0].name} is the winner!` }); // UPDATED
+                newLogMessages.push({ type: 'game', message: `GAME OVER! ${playersStillIn[0].name} is the winner!` });
             } else if (playersStillIn.length === 0) {
                 newGameState = "over";
-                newLogMessages.push({ type: 'game', message: "GAME OVER! It's a draw!" }); // UPDATED
+                newLogMessages.push({ type: 'game', message: "GAME OVER! It's a draw!" });
             }
             
             // 3. Determine next turn
@@ -1317,16 +1409,14 @@
         async function handleSendChat() {
             const message = chatInput.value.trim();
             if (!message) return;
-            if (!localGameData) return;
+            if (!localGameData || isSpectator) return; // Spectators can't chat
 
             chatInput.disabled = true;
             chatSendButton.disabled = true;
 
             const myPlayer = localGameData.players.find(p => p.userId === userId);
-            // Spectators use their login name and default color
-            // Players use their chosen name and color
-            const myColor = isSpectator ? DEFAULT_COLOR : (myPlayer?.color || DEFAULT_COLOR);
-            const myName = myPlayerName; // This is set at login for everyone
+            const myColor = myPlayer?.color || DEFAULT_COLOR;
+            const myName = myPlayerName; 
 
             const chatObject = { 
                 type: 'chat', 
@@ -1390,7 +1480,6 @@
         /**
          * Executes a silent ship move. Does NOT cost a turn.
          * @param {number} fromIndex - The grid index to move from.
-         *_..._
          * @param {number} toIndex - The grid index to move to.
          */
         async function executeSilentMove(fromIndex, toIndex) {
@@ -1406,8 +1495,6 @@
                 p.userId === userId ? { ...p, grid: newGrid } : p
             );
             
-            // FIX: Optimistically update local data and re-render
-            // This provides immediate UI feedback
             const oldLocalData = localGameData; // Keep a copy in case of error
             localGameData.players = newPlayers;
             hasMovedShipThisTurn = true;
@@ -1417,19 +1504,199 @@
 
             const roomRef = doc(db, getRoomPath());
             try {
-                // Now, update Firestore in the background
                 await updateDoc(roomRef, {
                     players: newPlayers
                 });
-                // Snapshot listener will eventually run, but UI is already updated
             } catch (err) {
                 console.error("Error moving ship:", err);
                 showMessage("Error moving ship. Reverting move.");
-                // Rollback optimistic update on error
                 localGameData = oldLocalData;
                 hasMovedShipThisTurn = false;
                 renderGameUI(localGameData);
             }
+        }
+
+
+        // --- NEW: WebRTC Signaling Functions ---
+
+        /**
+         * Listens for incoming WebRTC signals (offers, answers, candidates) from Firestore.
+         */
+        function listenForSignals() {
+            if (unsubscribeSignals) unsubscribeSignals(); // Stop previous listener
+
+            const signalsRef = getSignalsCollectionRef();
+            const q = query(signalsRef, where("to", "==", userId));
+
+            unsubscribeSignals = onSnapshot(q, (snapshot) => {
+                const batch = writeBatch(db);
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') {
+                        const data = change.doc.data();
+                        handleSignal(data);
+                        // Delete signal doc after processing
+                        batch.delete(change.doc.ref);
+                    }
+                });
+                if (!snapshot.empty) {
+                    batch.commit().catch(err => console.error("Error deleting signals:", err));
+                }
+            }, (error) => {
+                console.error("Error listening for signals:", error);
+            });
+        }
+
+        /**
+         * Sends a WebRTC signal to a specific player via Firestore.
+         * @param {string} toId - The userId to send the signal to.
+         * @param {object} signal - The WebRTC signal payload (offer, answer, or candidate).
+         */
+        async function sendSignal(toId, signal) {
+            try {
+                await addDoc(getSignalsCollectionRef(), {
+                    from: userId,
+                    to: toId,
+                    signal: signal
+                });
+            } catch (err) {
+                console.error("Error sending signal:", err);
+            }
+        }
+
+        /**
+         * Creates a new RTCPeerConnection for a given player.
+         * @param {string} otherPlayerId - The userId of the player to connect to.
+         * @param {boolean} isInitiator - True if this client is initiating the connection (sending offer).
+         */
+        function createPeerConnection(otherPlayerId, isInitiator = false) {
+            if (peerConnections[otherPlayerId]) return peerConnections[otherPlayerId]; // Already exists
+            if (!localStream) return; // Can't connect without a local stream
+
+            console.log(`Creating peer connection to ${otherPlayerId}, initiator: ${isInitiator}`);
+            const pc = new RTCPeerConnection(stunServers);
+            peerConnections[otherPlayerId] = pc;
+
+            // Add local stream tracks to the connection
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
+
+            // Handle incoming remote stream
+            pc.ontrack = (event) => {
+                handleRemoteTrack(otherPlayerId, event.streams[0]);
+            };
+
+            // Handle ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    sendSignal(otherPlayerId, { type: 'candidate', candidate: event.candidate });
+                }
+            };
+            
+            pc.onconnectionstatechange = () => {
+                console.log(`Connection state with ${otherPlayerId}: ${pc.connectionState}`);
+                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+                    cleanupPeerConnection(otherPlayerId);
+                }
+            };
+
+            // If initiator, create and send an offer
+            if (isInitiator) {
+                pc.createOffer()
+                    .then(offer => pc.setLocalDescription(offer))
+                    .then(() => {
+                        sendSignal(otherPlayerId, { type: 'offer', sdp: pc.localDescription.sdp });
+                    })
+                    .catch(err => console.error("Error creating offer:", err));
+            }
+            
+            return pc;
+        }
+
+        /**
+         * Handles an incoming signal from another player.
+         * @param {object} data - The signal data from Firestore { from, to, signal }.
+         */
+        async function handleSignal(data) {
+            const { from, signal } = data;
+            // Only handle signal if we are *not* a spectator
+            if(isSpectator) return;
+            
+            const pc = createPeerConnection(from, false); // Get or create connection (not initiator)
+
+            try {
+                if (signal.type === 'offer') {
+                    await pc.setRemoteDescription(new RTCSessionDescription(signal));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    sendSignal(from, { type: 'answer', sdp: pc.localDescription.sdp });
+                } else if (signal.type === 'answer') {
+                    await pc.setRemoteDescription(new RTCSessionDescription(signal));
+                } else if (signal.type === 'candidate') {
+                    if (signal.candidate) {
+                        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                    }
+                }
+            } catch (err) {
+                console.error("Error handling signal:", err);
+            }
+        }
+
+        /**
+         * Called when a remote audio stream is received.
+         * @param {string} peerId - The userId of the remote player.
+         * @param {MediaStream} stream - The incoming audio stream.
+         */
+        function handleRemoteTrack(peerId, stream) {
+            let audioEl = audioElements[peerId];
+            if (!audioEl) {
+                console.log(`Creating audio element for ${peerId}`);
+                audioEl = document.createElement('audio');
+                audioEl.autoplay = true;
+                audioElements[peerId] = audioEl;
+                audioStreamsContainer.appendChild(audioEl);
+            }
+            audioEl.srcObject = stream;
+        }
+
+        /**
+         * Cleans up a single peer connection.
+         * @param {string} peerId - The userId of the player to disconnect from.
+         */
+        function cleanupPeerConnection(peerId) {
+            if (peerConnections[peerId]) {
+                peerConnections[peerId].close();
+                delete peerConnections[peerId];
+            }
+            if (audioElements[peerId]) {
+                audioElements[peerId].remove();
+                delete audioElements[peerId];
+            }
+            console.log(`Cleaned up connection for ${peerId}`);
+        }
+
+        /**
+         * NEW: Cleans up all voice chat state (on leave/logout).
+         */
+        function cleanupAllVoice() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            if (unsubscribeSignals) {
+                unsubscribeSignals();
+                unsubscribeSignals = null;
+            }
+            Object.keys(peerConnections).forEach(cleanupPeerConnection);
+            peerConnections = {};
+            audioElements = {};
+            audioStreamsContainer.innerHTML = '';
+            
+            muteSelfButton.classList.add('hidden');
+            voiceChatButton.classList.add('hidden');
+            voiceChatButton.disabled = false;
+            voiceChatButton.textContent = "Join Voice 🎙️";
+            isMuted = false;
         }
 
 
@@ -1447,6 +1714,9 @@
             localGameData = null;
             currentRoomCode = null;
             isSpectator = false; // Reset spectator flag
+            
+            cleanupAllVoice(); // NEW: Clean up all WebRTC state
+            
             cancelMove(); 
             hasMovedShipThisTurn = false; 
             
@@ -1460,6 +1730,14 @@
             loadingScreen.classList.add('hidden');
             loginScreen.classList.add('hidden');
             gameScreen.classList.remove('hidden');
+            
+            // Only show voice button if NOT a spectator
+            if (!isSpectator) {
+                voiceChatButton.classList.remove('hidden');
+            } else {
+                voiceChatButton.classList.add('hidden');
+                muteSelfButton.classList.add('hidden');
+            }
         }
 
         // --- Firebase Initialization ---
@@ -1481,14 +1759,37 @@
             const roomRef = doc(db, getRoomPath());
             unsubscribeRoom = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
-                    const oldState = localGameData ? localGameData.gameState : null;
-                    const oldPlayerIndex = localGameData ? localGameData.currentPlayerIndex : -1;
-                    
+                    const oldLocalGameData = localGameData;
                     localGameData = doc.data();
                     
+                    // --- WebRTC Connection Management ---
+                    if (localStream) { // Only manage connections if I'm in voice
+                        const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.voiceJoined);
+                        const otherPlayerIds = otherPlayersInVoice.map(p => p.userId);
+                        
+                        // Connect to new players
+                        for (const player of otherPlayersInVoice) {
+                            if (!peerConnections[player.userId]) {
+                                const oldPlayer = oldLocalGameData?.players.find(p => p.userId === player.userId);
+                                // I am initiator if I was in voice *before* them
+                                const amInitiator = !oldPlayer?.voiceJoined; 
+                                createPeerConnection(player.userId, amInitiator);
+                            }
+                        }
+                        
+                        // Disconnect from leavers
+                        for (const peerId in peerConnections) {
+                            if (!otherPlayerIds.includes(peerId)) {
+                                cleanupPeerConnection(peerId);
+                            }
+                        }
+                    }
+                    // --- End WebRTC ---
+                    
+
                     // Don't reset move state if I am still the current player
-                    // This check fixes the ship move state being reset by the update
                     if (!isSpectator) {
+                        const oldPlayerIndex = oldLocalGameData ? oldLocalGameData.currentPlayerIndex : -1;
                         const newPlayerIndex = localGameData.currentPlayerIndex;
                         const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
                         
@@ -1511,7 +1812,9 @@
                         }
                     }
 
-                    if (oldState !== 'over' && localGameData.gameState === 'over') {
+                    // *** FIX HERE ***
+                    // Changed 'oldState' to 'oldLocalGameData?.gameState'
+                    if (oldLocalGameData?.gameState !== 'over' && localGameData.gameState === 'over') {
                         setTimeout(() => {
                             gameOverModal.classList.remove('hidden');
                         }, 1000);
@@ -1554,6 +1857,8 @@
                 createRoomButton.addEventListener('click', handleCreateRoom);
                 joinButton.addEventListener('click', handleJoinRoom);
                 startGameButton.addEventListener('click', handleStartGame);
+                voiceChatButton.addEventListener('click', handleJoinVoiceChat);
+                muteSelfButton.addEventListener('click', handleMuteSelf);
                 
                 myGridContainer.addEventListener('click', handleGridClick);
                 opponentGridsContainer.addEventListener('click', handleGridClick);
@@ -1562,7 +1867,6 @@
                 
                 roomColorPicker.addEventListener('click', handleColorSelectInRoom); 
                 
-                // NEW: Chat listeners
                 chatSendButton.addEventListener('click', handleSendChat);
                 chatInput.addEventListener('keyup', (e) => {
                     if (e.key === 'Enter') {
@@ -1575,6 +1879,8 @@
                 });
                 
                 playAgainButton.addEventListener('click', () => {
+                    // Clean up voice connections before reload
+                    cleanupAllVoice();
                     window.location.reload();
                 });
 
