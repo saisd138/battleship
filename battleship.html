@@ -366,13 +366,14 @@
         let userId, myPlayerName, currentRoomCode;
         let localGameData = null;
         let unsubscribeRoom = null;
+        let isSpectator = false; // NEW: Spectator mode flag
         
-        // NEW: State for click-to-move
+        // State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
         let validMoveIndices = [];   // Array of valid destination indices
         let hasMovedShipThisTurn = false; // Local flag for ship movement
 
-        // NEW: Darker Pastel colors
+        // Darker Pastel colors
         const PLAYER_COLORS = [
             '#60A5FA', // blue-400
             '#FB923C', // orange-400
@@ -432,7 +433,6 @@
         const gameLogContainer = document.getElementById('game-log-container');
 
         const myTurnActions = document.getElementById('my-turn-actions');
-        // REMOVED moveShipButton, cancelMoveButton
         
         const waitingRoomControls = document.getElementById('waiting-room-controls');
         const playerListContainer = document.getElementById('player-list-container');
@@ -664,14 +664,16 @@
             if (!roomData) return;
             
             const myPlayer = roomData.players.find(p => p.userId === userId);
-            if (!myPlayer) {
+
+            // NEW: Spectator check
+            if (!myPlayer && !isSpectator) {
                 showLoginScreen();
                 return;
             }
             
             // Update header
             roomDisplay.textContent = currentRoomCode;
-            myNameDisplay.textContent = myPlayerName;
+            myNameDisplay.textContent = myPlayerName + (isSpectator ? " (Spectator)" : "");
             
             // Clear main containers
             myGridContainer.innerHTML = ''; // Will be re-filled
@@ -683,7 +685,7 @@
             setupControls.classList.add('hidden');
             waitingRoomControls.classList.add('hidden');
             gameOverModal.classList.add('hidden');
-            myTurnActions.classList.add('hidden'); // This is now permanently hidden
+            myTurnActions.classList.add('hidden'); 
             
             // Render Game Log
             roomData.gameLog.slice().reverse().forEach(msg => {
@@ -692,14 +694,44 @@
                 p.className = 'text-sm text-gray-600';
                 gameLogContainer.appendChild(p);
             });
+            
+            // --- NEW: Spectator UI ---
+            if (isSpectator) {
+                gameStatus.textContent = "Spectating Game in Progress";
+                if (roomData.gameState === 'over') {
+                    gameStatus.textContent = "Game Over!";
+                }
+                
+                myGridContainer.innerHTML = `
+                    <div class="p-4 h-full flex flex-col items-center justify-center text-center">
+                        <h3 class="text-xl font-bold text-gray-700">Spectator Mode</h3>
+                        <p class="text-gray-500 mt-2">You are watching this game. You do not have a grid.</p>
+                    </div>
+                `;
 
-            // --- State Machine ---
+                // Render all player grids as opponents
+                roomData.players.forEach(player => {
+                    if (player.isOut) {
+                        opponentGridsContainer.innerHTML += createPlayerOutHTML(player);
+                    } else {
+                        opponentGridsContainer.innerHTML += createGridHTML(player, false, false); // Never "my turn"
+                    }
+                });
+                
+                if (roomData.gameState === "over") {
+                    const winner = roomData.players.find(p => p.userId === roomData.winner);
+                    winnerName.textContent = winner ? winner.name : 'Unknown';
+                    gameOverModal.classList.remove('hidden');
+                }
+                return; // End render function for spectators
+            }
+
+            // --- Player UI (existing logic) ---
             switch (roomData.gameState) {
                 case "waiting":
                     gameStatus.textContent = "Waiting for Players... (Share Code!)";
                     waitingRoomControls.classList.remove('hidden');
                     
-                    // Show list of joined players
                     roomData.players.forEach(player => {
                         const playerCard = `
                             <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center">
@@ -710,7 +742,6 @@
                         playerListContainer.innerHTML += playerCard;
                     });
                     
-                    // Render the color picker
                     renderColorPicker(roomData);
                     break;
 
@@ -732,24 +763,19 @@
                     const currentPlayer = roomData.players[roomData.currentPlayerIndex];
                     const isMyTurn = currentPlayer.userId === userId;
                     
-                    // Handle "Move Ship" state
                     if (isMyTurn) {
-                        // Reset move flag if turn just started
                         const oldPlayer = localGameData ? localGameData.players[localGameData.currentPlayerIndex] : null;
                         if (oldPlayer?.userId !== userId) {
                             hasMovedShipThisTurn = false;
                         }
 
-                        opponentGridsContainer.style.pointerEvents = 'auto'; // Attack grid is active
+                        opponentGridsContainer.style.pointerEvents = 'auto'; 
 
                         if (shipToMoveIndex !== null) {
-                            // FIX: Re-calculate valid moves based on fresh data
                             calculateValidMoves(shipToMoveIndex, myPlayer.grid);
                             
-                            // FIX: Check if the original ship is still valid to move
                             if (myPlayer.grid[shipToMoveIndex] !== 1) {
-                                cancelMove(); // Ship was hit, cancel move
-                                // Rerun the status logic
+                                cancelMove(); 
                                 gameStatus.textContent = "Your Turn! Attack!";
                                 if (!hasMovedShipThisTurn) {
                                     gameStatus.textContent += " (Or click a ship to move)";
@@ -758,7 +784,7 @@
                             } else {
                                 gameStatus.textContent = "Move: Select an adjacent empty cell.";
                                 gameStatus.classList.add('text-yellow-500');
-                                opponentGridsContainer.style.pointerEvents = 'none'; // Disable attacking
+                                opponentGridsContainer.style.pointerEvents = 'none'; 
                             }
                         } else {
                             gameStatus.textContent = "Your Turn! Attack!";
@@ -767,17 +793,15 @@
                             }
                             gameStatus.classList.add('text-yellow-500');
                         }
-                    } else { // Not my turn
+                    } else { 
                         gameStatus.textContent = `Waiting for ${currentPlayer.name}'s turn...`;
                         gameStatus.classList.remove('text-yellow-500');
-                        hasMovedShipThisTurn = false; // Reset flag when not my turn
-                        if (shipToMoveIndex !== null) cancelMove(); // Reset move state if turn passed
+                        hasMovedShipThisTurn = false; 
+                        if (shipToMoveIndex !== null) cancelMove(); 
                     }
                     
-                    // Render my grid (Must be after "Move Ship" logic to get highlights)
                     myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
 
-                    // Render opponent grids
                     roomData.players.forEach(player => {
                         if (player.userId === userId) return; 
                         if (player.isOut) {
@@ -817,13 +841,11 @@
             const newColor = swatch.dataset.color;
             const myPlayer = localGameData.players.find(p => p.userId === userId);
 
-            if (myPlayer.color === newColor) return; // Already selected
+            if (myPlayer.color === newColor) return; 
 
-            // Optimistically update UI
             document.querySelectorAll('#room-color-picker .color-swatch').forEach(s => s.classList.remove('selected'));
             swatch.classList.add('selected');
 
-            // Update firestore
             const newPlayers = localGameData.players.map(p => 
                 p.userId === userId ? { ...p, color: newColor } : p
             );
@@ -834,7 +856,6 @@
             } catch (err) {
                 console.error("Error setting color:", err);
                 showMessage("Error setting color. Please try again.");
-                // Snapshot will fix the UI
             }
         }
 
@@ -880,6 +901,7 @@
                     winner: null
                 };
                 await setDoc(roomRef, newRoomData);
+                isSpectator = false; // You are the creator, not a spectator
                 showGameScreen();
                 listenToRoom();
 
@@ -920,29 +942,34 @@
                 
                 if (!roomSnap.exists()) {
                     throw new Error("Room not found. Check the code.");
+                } 
+                
+                const roomData = roomSnap.data();
+                const isRejoining = roomData.players.find(p => p.userId === userId);
+
+                if (isRejoining) {
+                    // Player rejoining, just update name. Color is preserved.
+                    const newPlayers = roomData.players.map(p => 
+                        p.userId === userId ? { ...p, name: myPlayerName } : p
+                    );
+                    await updateDoc(roomRef, { players: newPlayers });
+                    isSpectator = false;
                 } else {
-                    const roomData = roomSnap.data();
-                    
-                    if (roomData.players.find(p => p.userId === userId)) {
-                        // Player rejoining, just update name. Color is preserved.
-                        const newPlayers = roomData.players.map(p => 
-                            p.userId === userId ? { ...p, name: myPlayerName } : p
-                        );
-                        await updateDoc(roomRef, { players: newPlayers });
-                    } else {
-                        // New player joining
+                    // New player joining
+                    if (roomData.gameState === "waiting") {
                         if (roomData.players.length >= MAX_PLAYERS) { 
                             throw new Error(`Room is full (max ${MAX_PLAYERS} players).`);
                         }
-                        if (roomData.gameState !== "waiting") {
-                            throw new Error("Game is already in progress.");
-                        }
-                        
                         const newPlayer = createNewPlayer();
                         await updateDoc(roomRef, {
                             players: arrayUnion(newPlayer),
                             gameLog: arrayUnion(`${myPlayerName} joined the room.`)
                         });
+                        isSpectator = false;
+                    } else {
+                        // Game in progress, join as spectator
+                        isSpectator = true;
+                        // Do not update doc, just listen
                     }
                 }
                 
@@ -965,7 +992,6 @@
                 return;
             }
 
-            // Check if all players have selected a color
             if (localGameData.players.some(p => p.color === null)) {
                  startGameError.textContent = "All players must choose a color before starting.";
                  return;
@@ -994,43 +1020,38 @@
         function handleGridClick(e) {
             const cellEl = e.target.closest('.grid-cell');
             if (!cellEl) return;
-            if (!localGameData) return;
+            if (!localGameData || isSpectator) return; // Spectators can't click grids
             
             const row = parseInt(cellEl.dataset.row);
             const col = parseInt(cellEl.dataset.col);
-            if (isNaN(row) || isNaN(col)) return; // Clicked on a label
+            if (isNaN(row) || isNaN(col)) return; 
             
             const index = toIndex(row, col);
             const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
             const isMyTurn = localGameData.gameState === 'playing' && currentPlayer.userId === userId;
 
-            // --- Move Ship Logic (NEW) ---
+            // --- Move Ship Logic ---
             if (isMyTurn && cellEl.closest('.my-grid')) {
                 const myPlayer = localGameData.players.find(p => p.userId === userId);
 
-                // --- 1. Trying to move to a highlighted destination ---
                 if (validMoveIndices.includes(index)) {
                     executeSilentMove(shipToMoveIndex, index);
-                    return; // Move is done
+                    return; 
                 }
 
-                // --- 2. Trying to select a ship to move ---
-                // FIX: Added `&& index !== shipToMoveIndex`
-                if (!hasMovedShipThisTurn && myPlayer.grid[index] === 1 && index !== shipToMoveIndex) { // It's an un-hit ship
-                    cancelMove(); // Clear previous selection
+                if (!hasMovedShipThisTurn && myPlayer.grid[index] === 1 && index !== shipToMoveIndex) { 
+                    cancelMove(); 
                     shipToMoveIndex = index;
                     calculateValidMoves(index, myPlayer.grid);
-                    renderGameUI(localGameData); // Re-render to show highlights
-                    return; // Waiting for destination click
+                    renderGameUI(localGameData); 
+                    return; 
                 }
                 
-                // --- 3. Clicked anywhere else on my grid ---
                 if (shipToMoveIndex !== null) {
                     cancelMove();
                     renderGameUI(localGameData);
                     return;
                 }
-                // (fall through to setup logic if in setup state)
             }
 
             // --- Setup Logic ---
@@ -1043,11 +1064,9 @@
             } 
             // --- Attack Logic ---
             else if (isMyTurn && cellEl.closest('.opponent-grid')) {
-                // Can only attack if NOT in the middle of a move
                 if (shipToMoveIndex === null) {
                     handleAttackClick(cellEl.dataset.playerId, index);
                 } else {
-                    // Clicked on opponent grid while moving, cancel move
                     cancelMove();
                     renderGameUI(localGameData);
                 }
@@ -1093,7 +1112,7 @@
             readyButton.disabled = true;
             
             const myPlayer = localGameData.players.find(p => p.userId === userId);
-            if (myPlayer.shipsPlaced !== SHIP_COUNT) { // Final check
+            if (myPlayer.shipsPlaced !== SHIP_COUNT) { 
                  showMessage(`You must place all ${SHIP_COUNT} ships.`);
                  readyButton.disabled = false;
                  return;
@@ -1138,12 +1157,11 @@
             
             if (typeof targetPlayer.grid[cellIndex] === 'object') {
                 showMessage("That position has already been attacked!");
-                opponentGridsContainer.style.pointerEvents = 'auto'; // Re-enable grid
+                opponentGridsContainer.style.pointerEvents = 'auto'; 
                 return;
             }
             
             const wasHit = targetPlayer.grid[cellIndex] === 1;
-            // NEW: Add grid coordinate to log message
             const coord = toGridCoord(cellIndex);
             let logMsg = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}`;
             let newLogMessages = [logMsg];
@@ -1155,7 +1173,7 @@
 
             // 1. Update target player
             const newGrid = [...targetPlayer.grid];
-            const attackerColor = attacker.color || DEFAULT_COLOR; // Fallback
+            const attackerColor = attacker.color || DEFAULT_COLOR; 
             if (wasHit) {
                 newGrid[cellIndex] = { type: 'hit', attackerId: attacker.userId, attackerColor: attackerColor };
             } else {
@@ -1190,13 +1208,11 @@
             
             // 3. Determine next turn
             if (newGameState === "playing" && !wasHit) {
-                // Miss: Advance turn, skipping any "out" players
                 do {
                     nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
                 } while (newPlayers[nextPlayerIndex].isOut);
             }
-            // If it was a hit, nextPlayerIndex remains the same (extra turn)
-
+            
             const roomRef = doc(db, getRoomPath());
             try {
                 await updateDoc(roomRef, {
@@ -1209,9 +1225,7 @@
             } catch (err) {
                 console.error("Error during attack:", err);
                 showMessage("Error processing attack. Please try again.");
-            } finally {
-                // Snapshot listener will re-enable grid
-            }
+            } 
         }
         
         // --- REVISED: Ship Moving Functions ---
@@ -1233,10 +1247,8 @@
             ];
 
             for (const move of potentialMoves) {
-                // Check bounds
                 if (move.r >= 0 && move.r < GRID_SIZE && move.c >= 0 && move.c < GRID_SIZE) {
                     const toIndex = toIndex(move.r, move.c);
-                    // Check if cell is empty (0)
                     if (grid[toIndex] === 0) {
                         validMoveIndices.push(toIndex);
                     }
@@ -1250,45 +1262,50 @@
         function cancelMove() {
             shipToMoveIndex = null;
             validMoveIndices = [];
-            // No render here, the calling function will render.
         }
 
         /**
-         * NEW: Executes a silent ship move. Does NOT cost a turn.
+         * Executes a silent ship move. Does NOT cost a turn.
          * @param {number} fromIndex - The grid index to move from.
          * @param {number} toIndex - The grid index to move to.
          */
         async function executeSilentMove(fromIndex, toIndex) {
             gameStatus.textContent = "Moving ship...";
-            myGridContainer.style.pointerEvents = 'none'; // Briefly disable grid
+            myGridContainer.style.pointerEvents = 'none'; 
 
             const myPlayer = localGameData.players.find(p => p.userId === userId);
             let newGrid = [...myPlayer.grid];
-            newGrid[fromIndex] = 0; // Empty old spot
-            newGrid[toIndex] = 1;   // Place in new spot
+            newGrid[fromIndex] = 0; 
+            newGrid[toIndex] = 1;   
 
             let newPlayers = localGameData.players.map(p => 
                 p.userId === userId ? { ...p, grid: newGrid } : p
             );
             
-            // This is the key: ONLY update players array. No log, no turn change.
+            // FIX: Optimistically update local data and re-render
+            // This provides immediate UI feedback
+            const oldLocalData = localGameData; // Keep a copy in case of error
+            localGameData.players = newPlayers;
+            hasMovedShipThisTurn = true;
+            cancelMove(); 
+            renderGameUI(localGameData); // Re-render immediately
+            myGridContainer.style.pointerEvents = 'auto'; // Re-enable
+
             const roomRef = doc(db, getRoomPath());
             try {
+                // Now, update Firestore in the background
                 await updateDoc(roomRef, {
                     players: newPlayers
                 });
-                // On success, set local flag and reset state
-                hasMovedShipThisTurn = true;
-                cancelMove(); // This will clear move state
-                // Snapshot will handle the re-render and re-enable grid.
+                // Snapshot listener will eventually run, but UI is already updated
             } catch (err) {
                 console.error("Error moving ship:", err);
-                showMessage("Error moving ship. Please try again.");
-                myGridContainer.style.pointerEvents = 'auto';
-                cancelMove(); // Reset on error
+                showMessage("Error moving ship. Reverting move.");
+                // Rollback optimistic update on error
+                localGameData = oldLocalData;
+                hasMovedShipThisTurn = false;
+                renderGameUI(localGameData);
             }
-            // Note: The snapshot listener will call `renderGameUI()`, which will see
-            // `hasMovedShipThisTurn = true` and `shipToMoveIndex = null`.
         }
 
 
@@ -1305,8 +1322,9 @@
             }
             localGameData = null;
             currentRoomCode = null;
-            cancelMove(); // Reset move state
-            hasMovedShipThisTurn = false; // Reset move flag
+            isSpectator = false; // Reset spectator flag
+            cancelMove(); 
+            hasMovedShipThisTurn = false; 
             
             joinButton.disabled = false;
             joinButton.textContent = "Join Game";
@@ -1340,26 +1358,28 @@
             unsubscribeRoom = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
                     const oldState = localGameData ? localGameData.gameState : null;
-                    const oldPlayerIndex = localGameData ? localGameData.currentPlayerIndex : -1;
+                    const oldPlayerIndex = localWhatsup ? localGameData.currentPlayerIndex : -1;
                     
                     localGameData = doc.data();
                     
-                    // Check if the turn has *just* passed from me to someone else
-                    const newPlayerIndex = localGameData.currentPlayerIndex;
-                    const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
-                    if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
-                        hasMovedShipThisTurn = false;
-                        cancelMove(); // Ensure move state is reset
+                    // Don't reset move state if I am still the current player
+                    // This check fixes the ship move state being reset by the update
+                    if (!isSpectator) {
+                        const newPlayerIndex = localGameData.currentPlayerIndex;
+                        const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
+                        
+                        if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
+                            hasMovedShipThisTurn = false;
+                            cancelMove(); 
+                        }
                     }
 
-                    // Re-enable grids by default
                     opponentGridsContainer.style.pointerEvents = 'auto';
                     myGridContainer.style.pointerEvents = 'auto';
                     
                     renderGameUI(localGameData);
 
-                    // Re-disable grids if necessary after render
-                    if (localGameData.gameState === 'playing') {
+                    if (!isSpectator && localGameData.gameState === 'playing') {
                         const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
                         const isMyTurn = currentPlayer.userId === userId;
                         if (isMyTurn && shipToMoveIndex !== null) {
@@ -1415,7 +1435,6 @@
                 opponentGridsContainer.addEventListener('click', handleGridClick);
                 
                 readyButton.addEventListener('click', handleReadyClick);
-                // REMOVED moveShipButton, cancelMoveButton listeners
                 
                 roomColorPicker.addEventListener('click', handleColorSelectInRoom); 
                 
