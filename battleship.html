@@ -172,6 +172,19 @@
             transform: rotate(-45deg);
         }
 
+        /* NEW: Game event log messages */
+        .log-game-event {
+            color: #DC2626; /* red-600 */
+            font-style: italic;
+            font-size: 0.875rem; /* text-sm */
+        }
+        
+        /* NEW: Chat messages */
+        .log-chat-message {
+            font-size: 0.875rem; /* text-sm */
+            word-break: break-word; /* Ensure long messages wrap */
+        }
+
 
     </style>
 </head>
@@ -263,9 +276,18 @@
 
                      <!-- Game Log (Combined) -->
                     <div class="mt-6">
-                        <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log</h3>
+                        <h3 class="text-xl font-semibold mb-2 text-gray-700">Game Log / Chat</h3>
                         <div id="game-log-container" class="h-48 bg-gray-100 rounded-lg p-4 overflow-y-auto shadow-inner space-y-2">
                             <!-- Log messages will be inserted here -->
+                        </div>
+                        <!-- NEW: Chat Input -->
+                        <div id="chat-controls" class="mt-2 hidden">
+                            <div class="flex gap-2">
+                                <input type="text" id="chat-input" class="flex-grow bg-white border border-gray-300 rounded-md p-2 text-sm text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="Type a message...">
+                                <button id="chat-send-button" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-200">
+                                    Send
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -431,6 +453,11 @@
         const myGridContainer = document.getElementById('my-grid-container');
         const opponentGridsContainer = document.getElementById('opponent-grids-container');
         const gameLogContainer = document.getElementById('game-log-container');
+
+        // NEW: Chat elements
+        const chatControls = document.getElementById('chat-controls');
+        const chatInput = document.getElementById('chat-input');
+        const chatSendButton = document.getElementById('chat-send-button');
 
         const myTurnActions = document.getElementById('my-turn-actions');
         
@@ -686,12 +713,26 @@
             waitingRoomControls.classList.add('hidden');
             gameOverModal.classList.add('hidden');
             myTurnActions.classList.add('hidden'); 
+            chatControls.classList.add('hidden'); // Hide chat by default
             
             // Render Game Log
-            roomData.gameLog.slice().reverse().forEach(msg => {
+            roomData.gameLog.slice().reverse().forEach(logEntry => {
                 const p = document.createElement('p');
-                p.textContent = msg;
-                p.className = 'text-sm text-gray-600';
+                if (logEntry.type === 'chat') {
+                    p.className = 'log-chat-message';
+                    // Sanitize message - very basic sanitation
+                    const safeMessage = logEntry.message
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#039;");
+                    p.innerHTML = `<span class="font-bold" style="color: ${logEntry.color || DEFAULT_COLOR};">${logEntry.name}:</span> ${safeMessage}`;
+                } else {
+                    // Default to game event
+                    p.className = 'log-game-event';
+                    p.textContent = logEntry.message;
+                }
                 gameLogContainer.appendChild(p);
             });
             
@@ -723,6 +764,7 @@
                     winnerName.textContent = winner ? winner.name : 'Unknown';
                     gameOverModal.classList.remove('hidden');
                 }
+                chatControls.classList.remove('hidden'); // Show chat for spectators
                 return; // End render function for spectators
             }
 
@@ -742,6 +784,7 @@
                         playerListContainer.innerHTML += playerCard;
                     });
                     
+                    chatControls.classList.remove('hidden'); // Show chat
                     renderColorPicker(roomData);
                     break;
 
@@ -756,6 +799,7 @@
                     } else {
                         setupInstructions.textContent = `Place your ${SHIP_COUNT} ships on your grid below.`;
                     }
+                    chatControls.classList.remove('hidden'); // Show chat
                     myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
                     break;
                     
@@ -800,6 +844,7 @@
                         if (shipToMoveIndex !== null) cancelMove(); 
                     }
                     
+                    chatControls.classList.remove('hidden'); // Show chat
                     myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
 
                     roomData.players.forEach(player => {
@@ -818,6 +863,7 @@
                     winnerName.textContent = winner ? winner.name : 'Unknown';
                     gameOverModal.classList.remove('hidden');
                     
+                    chatControls.classList.remove('hidden'); // Show chat
                     myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
                     roomData.players.forEach(player => {
                          if (player.userId === userId) return;
@@ -896,7 +942,7 @@
                     players: [newPlayer],
                     gameState: "waiting", 
                     currentPlayerIndex: 0,
-                    gameLog: [`${myPlayerName} created the room.`],
+                    gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }], // UPDATED
                     createdAt: serverTimestamp(),
                     winner: null
                 };
@@ -963,13 +1009,16 @@
                         const newPlayer = createNewPlayer();
                         await updateDoc(roomRef, {
                             players: arrayUnion(newPlayer),
-                            gameLog: arrayUnion(`${myPlayerName} joined the room.`)
+                            gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined the room.` }) // UPDATED
                         });
                         isSpectator = false;
                     } else {
                         // Game in progress, join as spectator
                         isSpectator = true;
-                        // Do not update doc, just listen
+                        // NEW: Add log message for spectator
+                        await updateDoc(roomRef, {
+                             gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined as a spectator.` })
+                        });
                     }
                 }
                 
@@ -1004,7 +1053,7 @@
             try {
                 await updateDoc(roomRef, {
                     gameState: "setup",
-                    gameLog: arrayUnion("The game is starting! Place your ships.")
+                    gameLog: arrayUnion({ type: 'game', message: "The game is starting! Place your ships." }) // UPDATED
                 });
             } catch (err) {
                 console.error("Error starting game:", err);
@@ -1131,7 +1180,7 @@
                         players: newPlayers,
                         gameState: "playing",
                         currentPlayerIndex: 0, 
-                        gameLog: arrayUnion("All players are ready! The battle begins!")
+                        gameLog: arrayUnion({ type: 'game', message: "All players are ready! The battle begins!" }) // UPDATED
                     });
                 } else {
                     await updateDoc(roomRef, { players: newPlayers });
@@ -1163,7 +1212,7 @@
             
             const wasHit = targetPlayer.grid[cellIndex] === 1;
             const coord = toGridCoord(cellIndex);
-            let logMsg = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}`;
+            let logMsg = { type: 'game', message: `${attacker.name} attacked ${targetPlayer.name} at ${coord}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}` }; // UPDATED
             let newLogMessages = [logMsg];
             
             let newPlayers = [...localGameData.players];
@@ -1187,7 +1236,7 @@
                 newShipsLeft--;
                 if (newShipsLeft === 0) {
                     newIsOut = true;
-                    newLogMessages.push(`${targetPlayer.name} has been eliminated!`);
+                    newLogMessages.push({ type: 'game', message: `${targetPlayer.name} has been eliminated!` }); // UPDATED
                 }
             }
             
@@ -1200,10 +1249,10 @@
             if (playersStillIn.length === 1) {
                 newGameState = "over";
                 newWinner = playersStillIn[0].userId;
-                newLogMessages.push(`GAME OVER! ${playersStillIn[0].name} is the winner!`);
+                newLogMessages.push({ type: 'game', message: `GAME OVER! ${playersStillIn[0].name} is the winner!` }); // UPDATED
             } else if (playersStillIn.length === 0) {
                 newGameState = "over";
-                newLogMessages.push("GAME OVER! It's a draw!");
+                newLogMessages.push({ type: 'game', message: "GAME OVER! It's a draw!" }); // UPDATED
             }
             
             // 3. Determine next turn
@@ -1226,6 +1275,46 @@
                 console.error("Error during attack:", err);
                 showMessage("Error processing attack. Please try again.");
             } 
+        }
+
+        /**
+         * NEW: Handles sending a chat message.
+         */
+        async function handleSendChat() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+            if (!localGameData) return;
+
+            chatInput.disabled = true;
+            chatSendButton.disabled = true;
+
+            const myPlayer = localGameData.players.find(p => p.userId === userId);
+            // Spectators use their login name and default color
+            // Players use their chosen name and color
+            const myColor = isSpectator ? DEFAULT_COLOR : (myPlayer?.color || DEFAULT_COLOR);
+            const myName = myPlayerName; // This is set at login for everyone
+
+            const chatObject = { 
+                type: 'chat', 
+                name: myName, 
+                color: myColor, 
+                message: message 
+            };
+
+            const roomRef = doc(db, getRoomPath());
+            try {
+                await updateDoc(roomRef, { 
+                    gameLog: arrayUnion(chatObject) 
+                });
+                chatInput.value = ''; // Clear input on success
+            } catch (err) {
+                console.error("Error sending chat:", err);
+                showMessage("Error sending message. Please try again.");
+            } finally {
+                chatInput.disabled = false;
+                chatSendButton.disabled = false;
+                chatInput.focus();
+            }
         }
         
         // --- REVISED: Ship Moving Functions ---
@@ -1438,6 +1527,14 @@
                 
                 roomColorPicker.addEventListener('click', handleColorSelectInRoom); 
                 
+                // NEW: Chat listeners
+                chatSendButton.addEventListener('click', handleSendChat);
+                chatInput.addEventListener('keyup', (e) => {
+                    if (e.key === 'Enter') {
+                        handleSendChat();
+                    }
+                });
+                
                 messageOkButton.addEventListener('click', () => {
                     messageModal.classList.add('hidden');
                 });
@@ -1459,5 +1556,4 @@
     </script>
 </body>
 </html>
-
 
