@@ -6,6 +6,8 @@
     <title>Battleship Royale</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- NEW: Load PeerJS Library -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         /* Custom game-specific styles */
         body {
@@ -23,7 +25,7 @@
         @media (min-width: 640px) {
             :root {
                 --cell-size: 35px; /* Desktop size */
-                --label-size: 35px; /* Desktop size */
+                --label-size: 5px; /* Desktop size */
             }
         }
 
@@ -76,7 +78,7 @@
         }
 
         /* My grid: hover effect */
-        .my-grid .grid-cell:not(.ship):not(.miss):not(.hit):not(.ship-selected-for-move):not(.move-option):hover {
+        .my-grid .grid-cell:not(.ship):not(.miss):not(.hit):not(.ship-selected-for-move):not(.move-option):not(.mine):hover {
             background-color: #a3d5ff; /* light-blue-200 */
         }
         
@@ -85,15 +87,23 @@
             background-color: #4b5563; /* gray-600 */
             border-color: #374151; /* gray-700 */
         }
+        
+        /* NEW: My grid: placed mine */
+        .my-grid .grid-cell.mine {
+            background-color: #cce7ff; /* light-blue-100 */
+            border-color: #a3d5ff;
+            color: #f97316; /* orange-500 */
+        }
 
         /* Opponent grid: fog of war (looks default) */
-        .opponent-grid .grid-cell.ship {
+        .opponent-grid .grid-cell.ship,
+        .opponent-grid .grid-cell.mine {
             background-color: #cce7ff; /* light-blue-100 */
             cursor: not-allowed;
         }
 
         /* Opponent grid: active turn hover effect */
-        .opponent-grid.turn-active .grid-cell:not(.miss):not(.hit):hover {
+        .opponent-grid.turn-active .grid-cell:not(.miss):not(.hit):not(.mine-hit):hover {
             background-color: #fef08a; /* yellow-200 */
             border-color: #fde047; /* yellow-300 */
         }
@@ -111,6 +121,15 @@
             cursor: not-allowed;
             animation: hit-animation 0.5s ease;
             color: #1f2937; /* gray-800 */
+        }
+        
+        /* NEW: All grids: mine hit */
+        .grid-cell.mine-hit {
+            /* Background-color is set by JS */
+            border-color: #ef4444; /* red-500 */
+            cursor: not-allowed;
+            animation: hit-animation 0.5s ease;
+            color: #7f1d1d; /* red-900 */
         }
         
         @keyframes hit-animation {
@@ -297,8 +316,12 @@
                 <div class="flex flex-col items-center lg:items-start flex-shrink-0 w-full lg:w-auto">
                     <!-- Setup Controls -->
                     <div id="setup-controls" class="hidden bg-white p-4 rounded-lg shadow-lg mb-6 text-center">
-                        <h3 id="setup-instructions" class="text-xl font-semibold text-yellow-600">Place your 5 ships on your grid below.</h3>
-                        <p class="text-lg mt-2">Ships Placed: <span id="ships-placed-count" class="font-bold text-2xl">0</span> / 5</p>
+                        <h3 id="setup-instructions" class="text-xl font-semibold text-yellow-600">Place your 5 ships.</h3>
+                        <p class="text-lg mt-2">
+                            Ships: <span id="ships-placed-count" class="font-bold text-2xl">0</span> / 5
+                            |
+                            Mines: <span id="mines-placed-count" class="font-bold text-2xl">0</span> / 3
+                        </p>
                         <button id="ready-button" disabled class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-md shadow-lg transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed">
                             Ready
                         </button>
@@ -412,18 +435,13 @@
             onSnapshot, 
             arrayUnion, 
             serverTimestamp,
-            setLogLevel,
-            collection, // NEW
-            query,       // NEW
-            where,       // NEW
-            addDoc,      // NEW
-            deleteDoc,   // NEW
-            writeBatch   // NEW
+            setLogLevel
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Game Constants ---
         const GRID_SIZE = 6;
         const SHIP_COUNT = 5;
+        const MINE_COUNT = 3; // NEW
         const MAX_PLAYERS = 20;
 
         // --- Global Variables ---
@@ -433,19 +451,12 @@
         let unsubscribeRoom = null;
         let isSpectator = false;
         
-        // --- NEW: WebRTC Voice Chat Globals ---
+        // --- NEW: PeerJS Voice Chat Globals ---
+        let peer = null;
         let localStream = null;
-        let peerConnections = {}; // { otherPlayerId: RTCPeerConnection }
+        let voiceConnections = {}; // { otherPlayerId: Peer.MediaConnection }
         let audioElements = {};   // { otherPlayerId: HTMLAudioElement }
         let isMuted = false;
-        let unsubscribeSignals = null;
-        // Public STUN servers
-        const stunServers = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
         
         // State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
@@ -507,6 +518,7 @@
         const setupControls = document.getElementById('setup-controls');
         const setupInstructions = document.getElementById('setup-instructions');
         const shipsPlacedCount = document.getElementById('ships-placed-count');
+        const minesPlacedCount = document.getElementById('mines-placed-count'); // NEW
         const readyButton = document.getElementById('ready-button');
         
         const myGridContainer = document.getElementById('my-grid-container');
@@ -564,12 +576,18 @@
         function getRoomPath() {
             return `artifacts/${appId}/public/data/battleship_rooms/${currentRoomCode}`;
         }
-
+        
         /**
-         * NEW: Gets the Firestore path for the WebRTC signaling collection.
+         * NEW: Creates a unique PeerJS ID based on room and user.
+         * This prevents collisions if the same user joins multiple rooms.
+         * @param {string} roomId - The current room code.
+         *@param {string} usrId - The current user ID.
+         * @returns {string} - A unique ID for PeerJS.
          */
-        function getSignalsCollectionRef() {
-            return collection(db, getRoomPath(), 'webrtc_signals');
+        function getPeerId(roomId, usrId) {
+            // PeerJS IDs must be alphanumeric + dashes/underscores
+            const safeUserId = usrId.replace(/[^a-zA-Z0-9]/g, '');
+            return `battleship-${roomId}-${safeUserId}`.slice(0, 100); // Keep ID reasonable
         }
 
         /**
@@ -617,10 +635,12 @@
                 color: null, // Color set after joining
                 grid: Array(GRID_SIZE * GRID_SIZE).fill(0),
                 shipsPlaced: 0,
+                minesPlaced: 0, // NEW
                 shipsLeft: SHIP_COUNT, 
                 isOut: false,
                 ready: false,
-                voiceJoined: false // NEW
+                peerId: null, // NEW: Will store their PeerJS ID
+                isSkippingTurn: false // NEW: For mine penalty
             };
         }
 
@@ -656,6 +676,11 @@
                     if (isMe) {
                         // My Grid: Show everything
                         if (cellState === 1) cellClass += ' ship';
+                        if (cellState === 2) { // NEW: Show my mine
+                            cellClass += ' mine';
+                            content = '💣';
+                        }
+                        
                         if (typeof cellState === 'object') {
                             if (cellState.type === 'miss') {
                                 cellClass += ' miss';
@@ -664,6 +689,10 @@
                             } else if (cellState.type === 'hit') {
                                 cellClass += ' hit';
                                 content = '🚢';
+                                style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
+                            } else if (cellState.type === 'mine-hit') { // NEW: Mine hit
+                                cellClass += ' mine-hit';
+                                content = '💥';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
                             }
                         }
@@ -686,6 +715,10 @@
                                 cellClass += ' hit';
                                 content = '🚢';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
+                            } else if (cellState.type === 'mine-hit') { // NEW: Mine hit
+                                cellClass += ' mine-hit';
+                                content = '💥';
+                                style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
                             }
                         }
                     }
@@ -696,8 +729,9 @@
 
             return `
                 <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
-                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name} ${player.voiceJoined ? '🎙️' : ''}</h3>
+                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name} ${player.peerId ? '🎙️' : ''}</h3>
                     <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
+                    ${player.isSkippingTurn ? '<p class="text-center text-xs sm:text-sm text-red-500 font-bold mb-2">SKIPPING TURN</p>' : ''}
                     <div class="grid-wrapper">
                         ${cellsHTML}
                     </div>
@@ -843,7 +877,7 @@
                     roomData.players.forEach(player => {
                         const playerCard = `
                             <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center">
-                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name} ${player.voiceJoined ? '🎙️' : ''}</h3>
+                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name} ${player.peerId ? '🎙️' : ''}</h3>
                                 ${player.color ? '' : '<p class="text-sm text-red-500">Choosing color...</p>'}
                             </div>
                         `;
@@ -855,16 +889,27 @@
                     break;
 
                 case "setup":
-                    gameStatus.textContent = "Place Your Ships!";
                     setupControls.classList.remove('hidden');
-                    
                     shipsPlacedCount.textContent = myPlayer.shipsPlaced;
-                    readyButton.disabled = (myPlayer.shipsPlaced !== SHIP_COUNT) || myPlayer.ready;
-                    if(myPlayer.ready) {
-                        setupInstructions.textContent = "Waiting for other players to get ready...";
+                    minesPlacedCount.textContent = myPlayer.minesPlaced; // NEW
+                    
+                    // NEW: Multi-stage setup instructions
+                    if (myPlayer.shipsPlaced < SHIP_COUNT) {
+                        gameStatus.textContent = "Place Your Ships!";
+                        setupInstructions.textContent = `Place your ${SHIP_COUNT} ships. (Click on grid)`;
+                    } else if (myPlayer.minesPlaced < MINE_COUNT) {
+                        gameStatus.textContent = "Place Your Mines!";
+                        setupInstructions.textContent = `Place your ${MINE_COUNT} mines. (Mines cannot be on ships)`;
+                    } else if (!myPlayer.ready) {
+                        gameStatus.textContent = "Ready Up!";
+                        setupInstructions.textContent = `You are all set! Hit the Ready button.`;
                     } else {
-                        setupInstructions.textContent = `Place your ${SHIP_COUNT} ships on your grid below.`;
+                        gameStatus.textContent = "Waiting for others...";
+                        setupInstructions.textContent = `Waiting for other players to get ready...`;
                     }
+                    
+                    readyButton.disabled = (myPlayer.shipsPlaced !== SHIP_COUNT) || (myPlayer.minesPlaced !== MINE_COUNT) || myPlayer.ready;
+                    
                     chatControls.classList.remove('hidden'); // Show chat
                     myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
                     break;
@@ -874,38 +919,46 @@
                     const isMyTurn = currentPlayer.userId === userId;
                     
                     if (isMyTurn) {
-                        const oldPlayer = localGameData ? localGameData.players[localGameData.currentPlayerIndex] : null;
-                        if (oldPlayer?.userId !== userId) {
-                            hasMovedShipThisTurn = false;
-                        }
+                        // NEW: Check for skipped turn
+                        if (myPlayer.isSkippingTurn) {
+                            gameStatus.textContent = "You hit a mine! Skipping your turn...";
+                            gameStatus.classList.add('text-red-500');
+                            // Skip turn immediately
+                            setTimeout(handleSkipTurn, 2000); // 2s delay to show message
+                        } else {
+                            const oldPlayer = localGameData ? localGameData.players[localGameData.currentPlayerIndex] : null;
+                            if (oldPlayer?.userId !== userId) {
+                                hasMovedShipThisTurn = false;
+                            }
 
-                        opponentGridsContainer.style.pointerEvents = 'auto'; 
+                            opponentGridsContainer.style.pointerEvents = 'auto'; 
 
-                        if (shipToMoveIndex !== null) {
-                            calculateValidMoves(shipToMoveIndex, myPlayer.grid);
-                            
-                            if (myPlayer.grid[shipToMoveIndex] !== 1) {
-                                cancelMove(); 
+                            if (shipToMoveIndex !== null) {
+                                calculateValidMoves(shipToMoveIndex, myPlayer.grid);
+                                
+                                if (myPlayer.grid[shipToMoveIndex] !== 1) {
+                                    cancelMove(); 
+                                    gameStatus.textContent = "Your Turn! Attack!";
+                                    if (!hasMovedShipThisTurn) {
+                                        gameStatus.textContent += " (Or click a ship to move)";
+                                    }
+                                    gameStatus.classList.add('text-yellow-500');
+                                } else {
+                                    gameStatus.textContent = "Move: Select an adjacent empty cell.";
+                                    gameStatus.classList.add('text-yellow-500');
+                                    opponentGridsContainer.style.pointerEvents = 'none'; 
+                                }
+                            } else {
                                 gameStatus.textContent = "Your Turn! Attack!";
                                 if (!hasMovedShipThisTurn) {
                                     gameStatus.textContent += " (Or click a ship to move)";
                                 }
                                 gameStatus.classList.add('text-yellow-500');
-                            } else {
-                                gameStatus.textContent = "Move: Select an adjacent empty cell.";
-                                gameStatus.classList.add('text-yellow-500');
-                                opponentGridsContainer.style.pointerEvents = 'none'; 
                             }
-                        } else {
-                            gameStatus.textContent = "Your Turn! Attack!";
-                            if (!hasMovedShipThisTurn) {
-                                gameStatus.textContent += " (Or click a ship to move)";
-                            }
-                            gameStatus.classList.add('text-yellow-500');
                         }
                     } else { 
                         gameStatus.textContent = `Waiting for ${currentPlayer.name}'s turn...`;
-                        gameStatus.classList.remove('text-yellow-500');
+                        gameStatus.classList.remove('text-yellow-500', 'text-red-500');
                         hasMovedShipThisTurn = false; 
                         if (shipToMoveIndex !== null) cancelMove(); 
                     }
@@ -918,7 +971,7 @@
                         if (player.isOut) {
                             opponentGridsContainer.innerHTML += createPlayerOutHTML(player);
                         } else {
-                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && shipToMoveIndex === null);
+                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && !myPlayer.isSkippingTurn && shipToMoveIndex === null);
                         }
                     });
                     break;
@@ -1118,7 +1171,7 @@
             try {
                 await updateDoc(roomRef, {
                     gameState: "setup",
-                    gameLog: arrayUnion({ type: 'game', message: "The game is starting! Place your ships." })
+                    gameLog: arrayUnion({ type: 'game', message: "The game is starting! Place your items." })
                 });
             } catch (err) {
                 console.error("Error starting game:", err);
@@ -1128,10 +1181,10 @@
         }
         
         /**
-         * NEW: Handles joining the integrated voice chat.
+         * NEW: Handles joining the integrated voice chat using PeerJS.
          */
         async function handleJoinVoiceChat() {
-            if (localStream || isSpectator) return; // Already joined or is spectator
+            if (peer || localStream || isSpectator) return; // Already joined or is spectator
 
             voiceChatButton.disabled = true;
             voiceChatButton.textContent = "Joining...";
@@ -1140,37 +1193,98 @@
                 // 1. Get user's microphone
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                 
-                // 2. Update UI
-                voiceChatButton.textContent = "Voice Joined 🎙️";
-                muteSelfButton.classList.remove('hidden');
+                // 2. Initialize PeerJS
+                const myPeerId = getPeerId(currentRoomCode, userId);
+                peer = new Peer(myPeerId); // Connect to PeerJS's free signaling server
+
+                peer.on('open', async (id) => {
+                    console.log('My PeerJS ID is:', id);
+                    
+                    // 3. Update UI
+                    voiceChatButton.textContent = "Voice Joined 🎙️";
+                    muteSelfButton.classList.remove('hidden');
+                    
+                    // 4. Update our state in Firestore to notify others
+                    const roomRef = doc(db, getRoomPath());
+                    const myPlayer = localGameData.players.find(p => p.userId === userId);
+                    if (myPlayer) {
+                        const newPlayers = localGameData.players.map(p => 
+                            p.userId === userId ? { ...p, peerId: id } : p
+                        );
+                        await updateDoc(roomRef, { players: newPlayers });
+                    }
+                    
+                    // 5. Handle incoming calls from other players
+                    peer.on('call', (call) => {
+                        console.log(`Incoming call from ${call.peer}`);
+                        call.answer(localStream); // Answer the call with our stream
+                        handleNewVoiceConnection(call);
+                    });
+                    
+                    // 6. Proactively call anyone *already* in voice
+                    const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.peerId);
+                    for (const player of otherPlayersInVoice) {
+                        callPlayer(player.peerId);
+                    }
+                });
                 
-                // 3. Listen for signals from other players
-                listenForSignals();
-                
-                // 4. Update our state in Firestore to notify others
-                // This will trigger *their* listenToRoom() to connect to *us*
-                const roomRef = doc(db, getRoomPath());
-                const myPlayer = localGameData.players.find(p => p.userId === userId);
-                if (myPlayer) {
-                    const newPlayers = localGameData.players.map(p => 
-                        p.userId === userId ? { ...p, voiceJoined: true } : p
-                    );
-                    await updateDoc(roomRef, { players: newPlayers });
-                }
-                
-                // 5. Proactively connect to anyone *already* in voice
-                const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.voiceJoined);
-                for (const player of otherPlayersInVoice) {
-                    createPeerConnection(player.userId, true); // true = I am the initiator
-                }
+                peer.on('error', (err) => {
+                    console.error("PeerJS Error:", err);
+                    showMessage(`Voice Chat Error: ${err.message}. Please try rejoining.`);
+                    cleanupAllVoice(); // Reset on error
+                });
 
             } catch (err) {
                 console.error("Error joining voice chat:", err);
                 showMessage("Could not access microphone. Please check permissions.");
-                voiceChatButton.disabled = false;
-                voiceChatButton.textContent = "Join Voice 🎙️";
+                cleanupAllVoice();
             }
         }
+        
+        /**
+         * NEW: Calls a specific PeerJS ID.
+         * @param {string} peerId - The PeerJS ID of the player to call.
+         */
+        function callPlayer(peerId) {
+             if (!peer || !localStream) return;
+             if (voiceConnections[peerId]) return; // Already connected
+             
+             console.log(`Calling ${peerId}`);
+             const call = peer.call(peerId, localStream);
+             handleNewVoiceConnection(call);
+        }
+        
+        /**
+         * NEW: Manages a new voice connection (incoming or outgoing).
+         * @param {Peer.MediaConnection} call - The PeerJS media connection.
+         */
+        function handleNewVoiceConnection(call) {
+            const peerId = call.peer;
+            voiceConnections[peerId] = call;
+
+            call.on('stream', (remoteStream) => {
+                console.log(`Receiving stream from ${peerId}`);
+                let audioEl = audioElements[peerId];
+                if (!audioEl) {
+                    audioEl = document.createElement('audio');
+                    audioEl.autoplay = true;
+                    audioElements[peerId] = audioEl;
+                    audioStreamsContainer.appendChild(audioEl);
+                }
+                audioEl.srcObject = remoteStream;
+            });
+
+            call.on('close', () => {
+                console.log(`Call with ${peerId} closed.`);
+                cleanupPeerConnection(peerId);
+            });
+            
+            call.on('error', (err) => {
+                 console.error(`Call error with ${peerId}:`, err);
+                 cleanupPeerConnection(peerId);
+            });
+        }
+
 
         /**
          * NEW: Toggles local microphone mute state.
@@ -1206,7 +1320,7 @@
             const isMyTurn = localGameData.gameState === 'playing' && currentPlayer.userId === userId;
 
             // --- Move Ship Logic ---
-            if (isMyTurn && cellEl.closest('.my-grid')) {
+            if (isMyTurn && cellEl.closest('.my-grid') && !currentPlayer.isSkippingTurn) {
                 const myPlayer = localGameData.players.find(p => p.userId === userId);
 
                 if (validMoveIndices.includes(index)) {
@@ -1238,7 +1352,7 @@
                 }
             } 
             // --- Attack Logic ---
-            else if (isMyTurn && cellEl.closest('.opponent-grid')) {
+            else if (isMyTurn && cellEl.closest('.opponent-grid') && !currentPlayer.isSkippingTurn) {
                 if (shipToMoveIndex === null) {
                     handleAttackClick(cellEl.dataset.playerId, index);
                 } else {
@@ -1256,27 +1370,50 @@
             const myPlayer = localGameData.players.find(p => p.userId === userId);
             let newGrid = [...myPlayer.grid];
             let newShipsPlaced = myPlayer.shipsPlaced;
+            let newMinesPlaced = myPlayer.minesPlaced; // NEW
             
-            if (newGrid[index] === 0 && newShipsPlaced < SHIP_COUNT) {
-                newGrid[index] = 1;
-                newShipsPlaced++;
-            } else if (newGrid[index] === 1) {
+            const currentCell = newGrid[index];
+            
+            if (newShipsPlaced < SHIP_COUNT) {
+                // Placing ships
+                if (currentCell === 0) {
+                    newGrid[index] = 1; // Place ship
+                    newShipsPlaced++;
+                } else if (currentCell === 1) {
+                    newGrid[index] = 0; // Remove ship
+                    newShipsPlaced--;
+                }
+            } else if (newMinesPlaced < MINE_COUNT) {
+                // Placing mines
+                if (currentCell === 0) {
+                    newGrid[index] = 2; // Place mine
+                    newMinesPlaced++;
+                } else if (currentCell === 2) {
+                    newGrid[index] = 0; // Remove mine
+                    newMinesPlaced--;
+                } else if (currentCell === 1) {
+                    showMessage("Cannot place a mine on a ship!");
+                }
+            } else if (currentCell === 1) {
+                // All items placed, can only remove ships
                 newGrid[index] = 0;
                 newShipsPlaced--;
-            } else {
-                return; 
+            } else if (currentCell === 2) {
+                 // All items placed, can only remove mines
+                newGrid[index] = 0;
+                newMinesPlaced--;
             }
             
             const newPlayers = localGameData.players.map(p => 
-                p.userId === userId ? { ...p, grid: newGrid, shipsPlaced: newShipsPlaced } : p
+                p.userId === userId ? { ...p, grid: newGrid, shipsPlaced: newShipsPlaced, minesPlaced: newMinesPlaced } : p
             );
             
             const roomRef = doc(db, getRoomPath());
             try {
                 await updateDoc(roomRef, { players: newPlayers });
             } catch (err) {
-                console.error("Error placing ship:", err);
-                showMessage("Error placing ship. Please try again.");
+                console.error("Error placing item:", err);
+                showMessage("Error placing item. Please try again.");
             }
         }
 
@@ -1287,8 +1424,8 @@
             readyButton.disabled = true;
             
             const myPlayer = localGameData.players.find(p => p.userId === userId);
-            if (myPlayer.shipsPlaced !== SHIP_COUNT) { 
-                 showMessage(`You must place all ${SHIP_COUNT} ships.`);
+            if (myPlayer.shipsPlaced !== SHIP_COUNT || myPlayer.minesPlaced !== MINE_COUNT) { 
+                 showMessage(`You must place all ${SHIP_COUNT} ships and ${MINE_COUNT} mines.`);
                  readyButton.disabled = false;
                  return;
             }
@@ -1336,36 +1473,50 @@
                 return;
             }
             
-            const wasHit = targetPlayer.grid[cellIndex] === 1;
+            const targetCell = targetPlayer.grid[cellIndex];
+            const wasHit = targetCell === 1;
+            const wasMine = targetCell === 2; // NEW
             const coord = toGridCoord(cellIndex);
-            let logMsg = { type: 'game', message: `${attacker.name} attacked ${targetPlayer.name} at ${coord}... ${wasHit ? 'HIT! 🚢' : 'MISS! X'}` };
-            let newLogMessages = [logMsg];
+            
+            let logMsg = { type: 'game', message: "" };
+            let newLogMessages = [];
             
             let newPlayers = [...localGameData.players];
             let newGameState = localGameData.gameState;
             let newWinner = null;
             let nextPlayerIndex = localGameData.currentPlayerIndex;
-
-            // 1. Update target player
-            const newGrid = [...targetPlayer.grid];
-            const attackerColor = attacker.color || DEFAULT_COLOR; 
-            if (wasHit) {
-                newGrid[cellIndex] = { type: 'hit', attackerId: attacker.userId, attackerColor: attackerColor };
-            } else {
-                newGrid[cellIndex] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor };
-            }
             
+            const attackerColor = attacker.color || DEFAULT_COLOR; 
+            const newGrid = [...targetPlayer.grid];
             let newShipsLeft = targetPlayer.shipsLeft;
             let newIsOut = targetPlayer.isOut;
 
             if (wasHit) {
+                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... HIT! 🚢`;
+                newGrid[cellIndex] = { type: 'hit', attackerId: attacker.userId, attackerColor: attackerColor };
                 newShipsLeft--;
                 if (newShipsLeft === 0) {
                     newIsOut = true;
                     newLogMessages.push({ type: 'game', message: `${targetPlayer.name} has been eliminated!` });
                 }
+            } else if (wasMine) { // NEW: Mine logic
+                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... IT'S A MINE! 💥`;
+                newGrid[cellIndex] = { type: 'mine-hit', attackerId: attacker.userId, attackerColor: attackerColor };
+                
+                // Mark attacker to skip their next turn
+                newPlayers = newPlayers.map(p => 
+                    p.userId === attacker.userId ? { ...p, isSkippingTurn: true } : p
+                );
+                newLogMessages.push({ type: 'game', message: `${attacker.name} hit a mine and will skip their next turn!` });
+            } else {
+                // Was a miss
+                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... MISS! X`;
+                newGrid[cellIndex] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor };
             }
             
+            newLogMessages.unshift(logMsg); // Add main log message to start
+            
+            // Update target player
             newPlayers = newPlayers.map(p => 
                 p.userId === targetPlayerId ? { ...p, grid: newGrid, shipsLeft: newShipsLeft, isOut: newIsOut } : p
             );
@@ -1382,6 +1533,7 @@
             }
             
             // 3. Determine next turn
+            // Turn only advances on a MISS or a MINE HIT
             if (newGameState === "playing" && !wasHit) {
                 do {
                     nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
@@ -1402,6 +1554,35 @@
                 showMessage("Error processing attack. Please try again.");
             } 
         }
+
+        /**
+         * NEW: Handles the automatic turn skip after hitting a mine.
+         */
+        async function handleSkipTurn() {
+            if (!localGameData) return;
+            
+            let newPlayers = localGameData.players.map(p => 
+                p.userId === userId ? { ...p, isSkippingTurn: false } : p
+            );
+            
+            // Find next player
+            let nextPlayerIndex = localGameData.currentPlayerIndex;
+            do {
+                nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
+            } while (newPlayers[nextPlayerIndex].isOut);
+            
+            const roomRef = doc(db, getRoomPath());
+            try {
+                await updateDoc(roomRef, {
+                    players: newPlayers,
+                    currentPlayerIndex: nextPlayerIndex,
+                    gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} skipped their turn.` })
+                });
+            } catch (err) {
+                console.error("Error skipping turn:", err);
+            }
+        }
+
 
         /**
          * NEW: Handles sending a chat message.
@@ -1517,156 +1698,16 @@
         }
 
 
-        // --- NEW: WebRTC Signaling Functions ---
-
-        /**
-         * Listens for incoming WebRTC signals (offers, answers, candidates) from Firestore.
-         */
-        function listenForSignals() {
-            if (unsubscribeSignals) unsubscribeSignals(); // Stop previous listener
-
-            const signalsRef = getSignalsCollectionRef();
-            const q = query(signalsRef, where("to", "==", userId));
-
-            unsubscribeSignals = onSnapshot(q, (snapshot) => {
-                const batch = writeBatch(db);
-                snapshot.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        const data = change.doc.data();
-                        handleSignal(data);
-                        // Delete signal doc after processing
-                        batch.delete(change.doc.ref);
-                    }
-                });
-                if (!snapshot.empty) {
-                    batch.commit().catch(err => console.error("Error deleting signals:", err));
-                }
-            }, (error) => {
-                console.error("Error listening for signals:", error);
-            });
-        }
-
-        /**
-         * Sends a WebRTC signal to a specific player via Firestore.
-         * @param {string} toId - The userId to send the signal to.
-         * @param {object} signal - The WebRTC signal payload (offer, answer, or candidate).
-         */
-        async function sendSignal(toId, signal) {
-            try {
-                await addDoc(getSignalsCollectionRef(), {
-                    from: userId,
-                    to: toId,
-                    signal: signal
-                });
-            } catch (err) {
-                console.error("Error sending signal:", err);
-            }
-        }
-
-        /**
-         * Creates a new RTCPeerConnection for a given player.
-         * @param {string} otherPlayerId - The userId of the player to connect to.
-         * @param {boolean} isInitiator - True if this client is initiating the connection (sending offer).
-         */
-        function createPeerConnection(otherPlayerId, isInitiator = false) {
-            if (peerConnections[otherPlayerId]) return peerConnections[otherPlayerId]; // Already exists
-            if (!localStream) return; // Can't connect without a local stream
-
-            console.log(`Creating peer connection to ${otherPlayerId}, initiator: ${isInitiator}`);
-            const pc = new RTCPeerConnection(stunServers);
-            peerConnections[otherPlayerId] = pc;
-
-            // Add local stream tracks to the connection
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
-            });
-
-            // Handle incoming remote stream
-            pc.ontrack = (event) => {
-                handleRemoteTrack(otherPlayerId, event.streams[0]);
-            };
-
-            // Handle ICE candidates
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    sendSignal(otherPlayerId, { type: 'candidate', candidate: event.candidate });
-                }
-            };
-            
-            pc.onconnectionstatechange = () => {
-                console.log(`Connection state with ${otherPlayerId}: ${pc.connectionState}`);
-                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
-                    cleanupPeerConnection(otherPlayerId);
-                }
-            };
-
-            // If initiator, create and send an offer
-            if (isInitiator) {
-                pc.createOffer()
-                    .then(offer => pc.setLocalDescription(offer))
-                    .then(() => {
-                        sendSignal(otherPlayerId, { type: 'offer', sdp: pc.localDescription.sdp });
-                    })
-                    .catch(err => console.error("Error creating offer:", err));
-            }
-            
-            return pc;
-        }
-
-        /**
-         * Handles an incoming signal from another player.
-         * @param {object} data - The signal data from Firestore { from, to, signal }.
-         */
-        async function handleSignal(data) {
-            const { from, signal } = data;
-            // Only handle signal if we are *not* a spectator
-            if(isSpectator) return;
-            
-            const pc = createPeerConnection(from, false); // Get or create connection (not initiator)
-
-            try {
-                if (signal.type === 'offer') {
-                    await pc.setRemoteDescription(new RTCSessionDescription(signal));
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    sendSignal(from, { type: 'answer', sdp: pc.localDescription.sdp });
-                } else if (signal.type === 'answer') {
-                    await pc.setRemoteDescription(new RTCSessionDescription(signal));
-                } else if (signal.type === 'candidate') {
-                    if (signal.candidate) {
-                        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-                    }
-                }
-            } catch (err) {
-                console.error("Error handling signal:", err);
-            }
-        }
-
-        /**
-         * Called when a remote audio stream is received.
-         * @param {string} peerId - The userId of the remote player.
-         * @param {MediaStream} stream - The incoming audio stream.
-         */
-        function handleRemoteTrack(peerId, stream) {
-            let audioEl = audioElements[peerId];
-            if (!audioEl) {
-                console.log(`Creating audio element for ${peerId}`);
-                audioEl = document.createElement('audio');
-                audioEl.autoplay = true;
-                audioElements[peerId] = audioEl;
-                audioStreamsContainer.appendChild(audioEl);
-            }
-            audioEl.srcObject = stream;
-        }
+        // --- NEW: PeerJS Cleanup Functions ---
 
         /**
          * Cleans up a single peer connection.
-         * @param {string} peerId - The userId of the player to disconnect from.
+         * @param {string} peerId - The PeerJS ID of the player to disconnect from.
          */
         function cleanupPeerConnection(peerId) {
-            if (peerConnections[peerId]) {
-                peerConnections[peerId].close();
-                delete peerConnections[peerId];
+            if (voiceConnections[peerId]) {
+                voiceConnections[peerId].close();
+                delete voiceConnections[peerId];
             }
             if (audioElements[peerId]) {
                 audioElements[peerId].remove();
@@ -1683,12 +1724,14 @@
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
             }
-            if (unsubscribeSignals) {
-                unsubscribeSignals();
-                unsubscribeSignals = null;
+            
+            if (peer) {
+                peer.destroy();
+                peer = null;
             }
-            Object.keys(peerConnections).forEach(cleanupPeerConnection);
-            peerConnections = {};
+
+            Object.keys(voiceConnections).forEach(cleanupPeerConnection);
+            voiceConnections = {};
             audioElements = {};
             audioStreamsContainer.innerHTML = '';
             
@@ -1715,7 +1758,7 @@
             currentRoomCode = null;
             isSpectator = false; // Reset spectator flag
             
-            cleanupAllVoice(); // NEW: Clean up all WebRTC state
+            cleanupAllVoice(); // NEW: Clean up all PeerJS state
             
             cancelMove(); 
             hasMovedShipThisTurn = false; 
@@ -1762,29 +1805,26 @@
                     const oldLocalGameData = localGameData;
                     localGameData = doc.data();
                     
-                    // --- WebRTC Connection Management ---
-                    if (localStream) { // Only manage connections if I'm in voice
-                        const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.voiceJoined);
-                        const otherPlayerIds = otherPlayersInVoice.map(p => p.userId);
+                    // --- PeerJS Connection Management ---
+                    if (peer && localStream) { // Only manage connections if I'm in voice
+                        const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.peerId);
+                        const otherPlayerPeerIds = otherPlayersInVoice.map(p => p.peerId);
                         
                         // Connect to new players
                         for (const player of otherPlayersInVoice) {
-                            if (!peerConnections[player.userId]) {
-                                const oldPlayer = oldLocalGameData?.players.find(p => p.userId === player.userId);
-                                // I am initiator if I was in voice *before* them
-                                const amInitiator = !oldPlayer?.voiceJoined; 
-                                createPeerConnection(player.userId, amInitiator);
+                            if (!voiceConnections[player.peerId]) {
+                                callPlayer(player.peerId);
                             }
                         }
                         
                         // Disconnect from leavers
-                        for (const peerId in peerConnections) {
-                            if (!otherPlayerIds.includes(peerId)) {
+                        for (const peerId in voiceConnections) {
+                            if (!otherPlayerPeerIds.includes(peerId)) {
                                 cleanupPeerConnection(peerId);
                             }
                         }
                     }
-                    // --- End WebRTC ---
+                    // --- End PeerJS ---
                     
 
                     // Don't reset move state if I am still the current player
@@ -1807,13 +1847,16 @@
                     if (!isSpectator && localGameData.gameState === 'playing') {
                         const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
                         const isMyTurn = currentPlayer.userId === userId;
-                        if (isMyTurn && shipToMoveIndex !== null) {
-                            opponentGridsContainer.style.pointerEvents = 'none';
+                        if (isMyTurn) {
+                            if(currentPlayer.isSkippingTurn) {
+                                opponentGridsContainer.style.pointerEvents = 'none';
+                                myGridContainer.style.pointerEvents = 'none';
+                            } else if (shipToMoveIndex !== null) {
+                                opponentGridsContainer.style.pointerEvents = 'none';
+                            }
                         }
                     }
 
-                    // *** FIX HERE ***
-                    // Changed 'oldState' to 'oldLocalGameData?.gameState'
                     if (oldLocalGameData?.gameState !== 'over' && localGameData.gameState === 'over') {
                         setTimeout(() => {
                             gameOverModal.classList.remove('hidden');
@@ -1831,6 +1874,11 @@
         }
         
         window.onload = () => {
+            if (typeof Peer === 'undefined') {
+                loadingScreen.innerHTML = "<h1>Error</h1><p>Could not load voice chat library (PeerJS). Please check your internet connection and refresh.</p>";
+                return;
+            }
+
             if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
                  loadingScreen.innerHTML = "<h1>Error</h1><p>Firebase is not configured. Please paste your `firebaseConfig` object into the script.</p>";
                 return;
