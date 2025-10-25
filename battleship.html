@@ -191,7 +191,27 @@
             }
         }
         
-        /* REMOVED Disconnected player styles */
+        /* NEW: Disconnected player overlay/style */
+        .player-disconnected .grid-wrapper,
+        .player-disconnected h3,
+        .player-disconnected p {
+            opacity: 0.5;
+            pointer-events: none; /* Prevent interaction with disconnected grids */
+        }
+        .player-disconnected-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-15deg);
+            background-color: rgba(239, 68, 68, 0.8); /* red-500 with opacity */
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            z-index: 5;
+            pointer-events: none;
+        }
 
 
         /* Modal backdrop */
@@ -477,7 +497,7 @@
             arrayUnion, 
             serverTimestamp,
             setLogLevel,
-            Timestamp 
+            Timestamp // NEW: Import Timestamp
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Game Constants ---
@@ -485,7 +505,9 @@
         const SHIP_COUNT = 5;
         const MINE_COUNT = 3;
         const MAX_PLAYERS = 20;
-        // REMOVED Presence Constants
+        const PRESENCE_UPDATE_INTERVAL = 20000; // Update lastSeen every 20 seconds
+        const DISCONNECT_TIMEOUT = 45000;      // Consider disconnected after 45 seconds
+        const KICK_TIMEOUT = 30000;            // Allow kicking after 30 seconds disconnected
 
         // --- Global Variables ---
         let app, db, auth;
@@ -494,8 +516,8 @@
         let oldLocalGameData = null; // Store previous state
         let unsubscribeRoom = null;
         let isSpectator = false;
-        // REMOVED presenceIntervalId
-        // REMOVED disconnectedPlayers
+        let presenceIntervalId = null; // NEW: Interval timer for presence
+        let disconnectedPlayers = {}; // NEW: Track players marked as disconnected { userId: timestamp }
         
         // State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
@@ -654,7 +676,6 @@
          * @returns {object} - The player object.
          */
         function createNewPlayer() {
-            // REMOVED lastSeen from initial object
             return {
                 userId: userId,
                 name: myPlayerName,
@@ -666,6 +687,7 @@
                 isOut: false,
                 ready: false,
                 isSkippingTurn: false,
+                lastSeen: serverTimestamp() // NEW: Add lastSeen on creation
             };
         }
 
@@ -681,13 +703,22 @@
             let cellsHTML = '';
             const playerColor = player.color || DEFAULT_COLOR;
             const isCreator = localGameData.creatorId === userId;
+            const isDisconnected = disconnectedPlayers[player.userId]; // Check disconnect status
+            const canKickDisconnected = isDisconnected && (Date.now() - disconnectedPlayers[player.userId] > KICK_TIMEOUT);
+
+            // Add disconnected style if needed
+            if (isDisconnected && !isMe) {
+                 gridClasses += ' player-disconnected';
+            }
             
-            // SIMPLIFIED: Only host can kick now
-            const kickButtonHTML = (isCreator && !isMe)
+            // Allow kicking if host OR if player is disconnected for long enough
+            const kickButtonHTML = ((isCreator || canKickDisconnected) && !isMe)
                 ? `<button data-kick-id="${player.userId}" class="kick-button-ingame">Kick</button>`
                 : '';
                 
-            // REMOVED disconnectedLabelHTML
+            const disconnectedLabelHTML = (isDisconnected && !isMe)
+                ? `<div class="player-disconnected-label">Disconnected</div>`
+                : '';
             
             // Add column headers
             cellsHTML += '<div class="grid-label"></div>'; // Empty corner
@@ -766,7 +797,8 @@
 
             return `
                 <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'} relative">
-                    ${kickButtonHTML} 
+                    ${disconnectedLabelHTML}
+                    ${kickButtonHTML}
                     <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name}</h3>
                     <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
                     ${player.isSkippingTurn ? '<p class="text-center text-xs sm:text-sm text-red-500 font-bold mb-2">SKIPPING TURN</p>' : ''}
@@ -825,7 +857,6 @@
          * @param {object} roomData - The data from Firestore.
          */
         function renderGameUI(roomData) {
-             console.log("Rendering UI with roomData:", roomData, "and currentRoomCode:", currentRoomCode); // DEBUG
             if (!roomData) return;
             
             const myPlayer = roomData.players.find(p => p.userId === userId);
@@ -833,25 +864,14 @@
             // Kicked / Rejoin Logic
             if (!myPlayer && !isSpectator) {
                 // Kicked or data mismatch, return to login
-                 console.log("Player not found in room data, showing login."); // DEBUG
                 showMessage("You have been removed from the game.");
                 showLoginScreen();
                 return;
             }
             
             // Update header
-            if (roomDisplay && currentRoomCode) { // DEBUG: Check if elements exist
-                console.log(`Setting roomDisplay.textContent to: ${currentRoomCode}`); // DEBUG
-                roomDisplay.textContent = currentRoomCode;
-            } else {
-                 console.warn("roomDisplay element or currentRoomCode missing during render."); // DEBUG
-            }
-            if (myNameDisplay && myPlayerName) { // DEBUG: Check if elements exist
-                 console.log(`Setting myNameDisplay.textContent to: ${myPlayerName + (isSpectator ? " (Spectator)" : "")}`); // DEBUG
-                myNameDisplay.textContent = myPlayerName + (isSpectator ? " (Spectator)" : "");
-            } else {
-                 console.warn("myNameDisplay element or myPlayerName missing during render."); // DEBUG
-            }
+            roomDisplay.textContent = currentRoomCode;
+            myNameDisplay.textContent = myPlayerName + (isSpectator ? " (Spectator)" : "");
             
             // Clear main containers
             myGridContainer.innerHTML = ''; // Will be re-filled
@@ -888,7 +908,6 @@
             
             // --- NEW: Spectator UI ---
             if (isSpectator) {
-                 console.log("Rendering as spectator."); // DEBUG
                 gameStatus.textContent = "Spectating Game in Progress";
                 if (roomData.gameState === 'over') {
                     gameStatus.textContent = "Game Over!";
@@ -919,7 +938,6 @@
                 return; // End render function for spectators
             }
 
-             console.log("Rendering as player. State:", roomData.gameState); // DEBUG
             // --- Player UI (existing logic) ---
             switch (roomData.gameState) {
                 case "waiting":
@@ -928,14 +946,16 @@
                     const isCreator = localGameData.creatorId === userId;
                     
                     roomData.players.forEach(player => {
-                        // SIMPLIFIED Kick Button Logic (Host only)
-                        const kickButtonHTML = (isCreator && player.userId !== userId)
+                        const isDisconnected = disconnectedPlayers[player.userId]; // Check disconnect status
+                        const canKickDisconnected = isDisconnected && (Date.now() - disconnectedPlayers[player.userId] > KICK_TIMEOUT);
+
+                        const kickButtonHTML = ((isCreator || canKickDisconnected) && player.userId !== userId)
                             ? `<button data-kick-id="${player.userId}" class="kick-button">Kick</button>`
                             : '';
                             
                         const playerCard = `
-                            <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center flex justify-between items-center">
-                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name}</h3>
+                            <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center flex justify-between items-center ${isDisconnected ? 'opacity-50' : ''}">
+                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name} ${isDisconnected ? '(Disconnected)' : ''}</h3>
                                 <div>
                                     ${player.color ? '' : '<span class="text-xs text-red-500">Choosing color...</span>'}
                                     ${kickButtonHTML}
@@ -972,24 +992,10 @@
                     
                     chatControls.classList.remove('hidden'); // Show chat
                     myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
-                     // DEBUG: Ensure opponent container is visible even if empty
-                    opponentGridsContainer.classList.remove('hidden');
                     break;
                     
                 case "playing":
-                     // Ensure currentPlayerIndex is valid before accessing players array
-                    if (roomData.currentPlayerIndex < 0 || roomData.currentPlayerIndex >= roomData.players.length) {
-                        console.error("Invalid currentPlayerIndex in render (playing):", roomData.currentPlayerIndex);
-                        gameStatus.textContent = "Error: Invalid game state."; // Show an error
-                         // Optionally, try to recover or reset state
-                        break; 
-                    }
                     const currentPlayer = roomData.players[roomData.currentPlayerIndex];
-                     if (!currentPlayer) { // Extra safety check
-                        console.error("Current player is undefined for index:", roomData.currentPlayerIndex);
-                        gameStatus.textContent = "Error: Cannot find current player.";
-                        break;
-                     }
                     const isMyTurn = currentPlayer.userId === userId;
                     
                     if (isMyTurn) {
@@ -1000,17 +1006,10 @@
                             setTimeout(handleSkipTurn, 2000); // 2s delay to show message
                         } else {
                             if (oldLocalGameData) {
-                                // Ensure index is valid before checking old state
-                                if (oldLocalGameData.currentPlayerIndex >= 0 && oldLocalGameData.currentPlayerIndex < oldLocalGameData.players.length) {
-                                    const oldPlayer = oldLocalGameData.players[oldLocalGameData.currentPlayerIndex];
-                                    if (oldPlayer?.userId !== userId) {
-                                        hasMovedShipThisTurn = false;
-                                    }
-                                } else {
-                                     hasMovedShipThisTurn = false; // Reset if old index was invalid
+                                const oldPlayer = oldLocalGameData.players[oldLocalGameData.currentPlayerIndex];
+                                if (oldPlayer?.userId !== userId) {
+                                    hasMovedShipThisTurn = false;
                                 }
-                            } else {
-                                 hasMovedShipThisTurn = false; // Reset if no old data
                             }
 
                             opponentGridsContainer.style.pointerEvents = 'auto'; 
@@ -1056,8 +1055,6 @@
                             opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && !myPlayer.isSkippingTurn && shipToMoveIndex === null);
                         }
                     });
-                     // DEBUG: Ensure opponent container is visible
-                     opponentGridsContainer.classList.remove('hidden');
                     break;
                     
                 case "over":
@@ -1072,14 +1069,7 @@
                          if (player.userId === userId) return;
                          opponentGridsContainer.innerHTML += createGridHTML(player, false, false);
                     });
-                    
-                    // REMOVED Stop presence updates (no longer needed here)
-                     // DEBUG: Ensure opponent container is visible
-                     opponentGridsContainer.classList.remove('hidden');
                     break;
-                 default: // DEBUG
-                     console.error("Unknown game state:", roomData.gameState);
-                     gameStatus.textContent = "Error: Unknown game state.";
             }
         }
         
@@ -1144,13 +1134,13 @@
                 }
             } while (roomSnap.exists());
 
-             console.log(`Creating new room: ${newRoomCode}. Current code set to: ${currentRoomCode}`); // DEBUG
+            console.log(`Creating new room: ${newRoomCode}`);
 
             try {
-                const newPlayer = createNewPlayer(); // Without lastSeen
+                const newPlayer = createNewPlayer();
                 const newRoomData = {
                     creatorId: userId,
-                    players: [newPlayer], // Add player without timestamp first
+                    players: [newPlayer],
                     gameState: "waiting", 
                     currentPlayerIndex: 0,
                     gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }],
@@ -1158,19 +1148,15 @@
                     winner: null,
                     lastMove: null
                 };
-                 console.log("Setting initial room data:", newRoomData); // DEBUG
                 await setDoc(roomRef, newRoomData);
-
-                 // REMOVED separate timestamp update for creator (no longer needed)
                 
                 localStorage.setItem('savedRoomCode', currentRoomCode);
                 localStorage.setItem('savedPlayerName', myPlayerName);
                 
                 isSpectator = false;
                 showGameScreen();
-                 console.log("Game screen shown, setting up listener."); // DEBUG
                 listenToRoom();
-                // REMOVED startPresenceUpdates call
+                startPresenceUpdates(); // NEW: Start updating presence
 
             } catch (err) {
                 console.error("Error creating room:", err);
@@ -1210,7 +1196,6 @@
 
             myPlayerName = name;
             currentRoomCode = roomCode;
-             console.log(`Attempting to join room: ${currentRoomCode}. Current code set to: ${currentRoomCode}`); // DEBUG
             
             const roomRef = doc(db, getRoomPath());
             
@@ -1238,12 +1223,11 @@
                         }
                         throw new Error("You were removed from this game. You cannot rejoin.");
                     }
-                    // Not out, update name 
-                    const playerIndex = roomData.players.findIndex(p => p.userId === userId);
-                    await updateDoc(roomRef, {
-                         [`players.${playerIndex}.name`]: myPlayerName,
-                         // REMOVED lastSeen update
-                    });
+                    // Not out, update name and lastSeen
+                    const newPlayers = roomData.players.map(p => 
+                        p.userId === userId ? { ...p, name: myPlayerName, lastSeen: serverTimestamp() } : p
+                    );
+                    await updateDoc(roomRef, { players: newPlayers });
                     isSpectator = false;
                 } else {
                     // New player joining
@@ -1251,14 +1235,11 @@
                         if (roomData.players.length >= MAX_PLAYERS) { 
                             throw new Error(`Room is full (max ${MAX_PLAYERS} players).`);
                         }
-                        const newPlayer = createNewPlayer(); // Without lastSeen
-                        // Add player
+                        const newPlayer = createNewPlayer();
                         await updateDoc(roomRef, {
                             players: arrayUnion(newPlayer),
                             gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined the room.` })
                         });
-                        // REMOVED separate timestamp update
-
                         isSpectator = false;
                     } else {
                         // Game in progress, join as spectator
@@ -1278,9 +1259,8 @@
                 }
                 
                 showGameScreen();
-                 console.log("Game screen shown (join), setting up listener."); // DEBUG
                 listenToRoom();
-                // REMOVED startPresenceUpdates call
+                if (!isSpectator) startPresenceUpdates(); // NEW: Start presence if not spectator
                 
             } catch (err) {
                 console.error("Error joining room:", err);
@@ -1794,13 +1774,16 @@
             
             if (exitType === 'kick') {
                 kickId = e.target.dataset.kickId;
-                if (!kickId || !localGameData) return; 
+                if (!kickId || !localGameData) return; // Allow anyone to kick disconnected, host check later
 
-                const isCreator = localGameData.creatorId === userId;
-                
-                 // SIMPLIFIED: Only allow kick if host
-                 if (!isCreator) {
-                     showMessage("Only the host can kick players.");
+                 const targetPlayer = localGameData.players.find(p => p.userId === kickId);
+                 const isCreator = localGameData.creatorId === userId;
+                 const isDisconnected = disconnectedPlayers[kickId];
+                 const canKickDisconnected = isDisconnected && (Date.now() - disconnectedPlayers[kickId] > KICK_TIMEOUT);
+
+                 // Only allow kick if host OR target is disconnected long enough
+                 if (!isCreator && !canKickDisconnected) {
+                     showMessage("Only the host can kick active players.");
                      return;
                  }
 
@@ -1887,13 +1870,16 @@
                 unsubscribeRoom();
                 unsubscribeRoom = null;
             }
-            // REMOVED presence interval clear (no longer exists)
+            if (presenceIntervalId) { // NEW: Clear presence interval
+                clearInterval(presenceIntervalId);
+                presenceIntervalId = null;
+            }
             
             localGameData = null;
             oldLocalGameData = null;
             currentRoomCode = null;
             isSpectator = false;
-            // REMOVED disconnectedPlayers clear (no longer exists)
+            disconnectedPlayers = {}; // NEW: Clear disconnect tracker
             cancelMove(); 
             hasMovedShipThisTurn = false; 
             
@@ -1921,47 +1907,123 @@
             }
         }
         
-         // REMOVED startPresenceUpdates function
+         /**
+         * NEW: Starts periodically updating the player's lastSeen timestamp.
+         */
+        function startPresenceUpdates() {
+            if (presenceIntervalId) clearInterval(presenceIntervalId); // Clear existing timer
+            
+            const updatePresence = async () => {
+                const roomPath = getRoomPath();
+                if (!roomPath || !localGameData) return; // Don't update if not in a room
+
+                const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
+                if (myPlayerIndex === -1 || localGameData.players[myPlayerIndex].isOut) {
+                    // Player not found or is out, stop updates
+                    if (presenceIntervalId) clearInterval(presenceIntervalId);
+                    return;
+                }
+
+                const roomRef = doc(db, roomPath);
+                try {
+                     // Use a specific field update to avoid overwriting other player data
+                    await updateDoc(roomRef, {
+                        [`players.${myPlayerIndex}.lastSeen`]: serverTimestamp()
+                    });
+                     console.log("Presence updated");
+                } catch (err) {
+                    console.error("Error updating presence:", err);
+                    // Consider stopping updates if there's a persistent error
+                }
+            };
+
+            // Update immediately first time
+            updatePresence(); 
+            // Then update periodically
+            presenceIntervalId = setInterval(updatePresence, PRESENCE_UPDATE_INTERVAL);
+        }
 
         /**
          * Main room listener. Handles game state.
          */
         function listenToRoom() {
-             console.log("Setting up listener for room:", currentRoomCode); // DEBUG
             if (unsubscribeRoom) {
-                 console.log("Unsubscribing from previous listener."); // DEBUG
                 unsubscribeRoom();
             }
             
             const roomPath = getRoomPath();
              if (!roomPath) { // Safety check if room code is lost
-                 console.error("listenToRoom called with no currentRoomCode."); // DEBUG
                 showLoginScreen();
                 return;
             }
             const roomRef = doc(db, roomPath);
 
             unsubscribeRoom = onSnapshot(roomRef, (doc) => {
-                 console.log("Snapshot received for room:", currentRoomCode); // DEBUG
                 if (doc.exists()) {
                     oldLocalGameData = localGameData; // Save previous state
                     localGameData = doc.data();
-                     console.log("New localGameData:", localGameData); // DEBUG
                     
-                    // REMOVED Disconnect Check Logic
+                    let shouldAddDisconnectLog = []; // Track who needs a log message THIS snapshot
+
+                    // --- Disconnect Check ---
+                    if (localGameData.players) {
+                        const now = Date.now();
+                        localGameData.players.forEach(player => {
+                            if (player.userId === userId || player.isOut) {
+                                // Ignore self or players already out
+                                if (disconnectedPlayers[player.userId]) {
+                                    delete disconnectedPlayers[player.userId]; // Clear if they rejoined or are out
+                                }
+                                return; 
+                            }
+
+                            if (player.lastSeen instanceof Timestamp) {
+                                const lastSeenTime = player.lastSeen.toDate().getTime();
+                                if (now - lastSeenTime > DISCONNECT_TIMEOUT) {
+                                    // Player is disconnected
+                                    if (!disconnectedPlayers[player.userId]) {
+                                        // First time seeing disconnect for this player
+                                        disconnectedPlayers[player.userId] = now; // Store time detected
+                                        shouldAddDisconnectLog.push(player.name);
+                                        console.log(`${player.name} detected as disconnected.`);
+                                    }
+                                } else {
+                                    // Player is connected or reconnected
+                                    if (disconnectedPlayers[player.userId]) {
+                                        delete disconnectedPlayers[player.userId];
+                                        console.log(`${player.name} reconnected.`);
+                                         // Optionally add a reconnect message to log here
+                                    }
+                                }
+                            } else {
+                                // lastSeen is not a timestamp yet (might be serverTimestamp placeholder)
+                                // Or player object is malformed
+                                console.warn("Player missing valid lastSeen:", player.name);
+                            }
+                        });
+                    }
+                    
+                    // Add disconnect messages if needed (do this outside the loop)
+                    if (shouldAddDisconnectLog.length > 0) {
+                        const logMessages = shouldAddDisconnectLog.map(name => ({
+                            type: 'game', message: `${name} appears to have disconnected.`
+                        }));
+                        // Update log in Firestore (don't await, let snapshot handle UI)
+                        updateDoc(roomRef, { gameLog: arrayUnion(...logMessages) })
+                            .catch(err => console.error("Error adding disconnect log:", err));
+                    }
+
 
                     // --- Continue with normal state processing ---
                     if (!isSpectator) {
                         const myPlayer = localGameData.players.find(p => p.userId === userId);
                         if (!myPlayer) {
-                             console.log("Player not found in snapshot, showing login."); // DEBUG
                             showMessage("You were removed from the room.");
                             showLoginScreen();
                             return;
                         }
                         
                         if (myPlayer.isOut) {
-                             console.log("Player is marked as 'out', showing login."); // DEBUG
                             showMessage("You have been eliminated or removed from the game.");
                             showLoginScreen();
                             return;
@@ -1985,7 +2047,6 @@
                     opponentGridsContainer.style.pointerEvents = 'auto';
                     myGridContainer.style.pointerEvents = 'auto';
                     
-                     console.log("Calling renderGameUI from listener."); // DEBUG
                     renderGameUI(localGameData); // Render based on potentially updated disconnect status
 
                     if (!isSpectator && localGameData.gameState === 'playing') {
@@ -2012,7 +2073,6 @@
                         }, 1000);
                     }
                 } else {
-                     console.log("Document does not exist, showing login."); // DEBUG
                     showMessage("The game room no longer exists.");
                     showLoginScreen();
                 }
@@ -2101,4 +2161,3 @@
     </script>
 </body>
 </html>
-
