@@ -874,11 +874,13 @@
             
             // Update header
             if (roomDisplay && currentRoomCode) { // DEBUG: Check if elements exist
+                console.log(`Setting roomDisplay.textContent to: ${currentRoomCode}`); // DEBUG
                 roomDisplay.textContent = currentRoomCode;
             } else {
                  console.warn("roomDisplay element or currentRoomCode missing during render."); // DEBUG
             }
             if (myNameDisplay && myPlayerName) { // DEBUG: Check if elements exist
+                 console.log(`Setting myNameDisplay.textContent to: ${myPlayerName + (isSpectator ? " (Spectator)" : "")}`); // DEBUG
                 myNameDisplay.textContent = myPlayerName + (isSpectator ? " (Spectator)" : "");
             } else {
                  console.warn("myNameDisplay element or myPlayerName missing during render."); // DEBUG
