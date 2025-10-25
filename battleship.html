@@ -19,19 +19,11 @@
             --label-size: 20px; /* Mobile size */
         }
         
-        /* NEW: Tablet grid size */
-        @media (min-width: 640px) { /* sm */
-             :root {
-                --cell-size: 28px;
-                --label-size: 28px;
-            }
-        }
-        
         /* Desktop grid sizes */
-        @media (min-width: 1024px) { /* lg */
+        @media (min-width: 640px) {
             :root {
                 --cell-size: 35px; /* Desktop size */
-                --label-size: 35px; /* Desktop size */
+                --label-size: 5px; /* Desktop size */
             }
         }
 
@@ -51,7 +43,7 @@
             transition: all 0.15s ease-in-out;
             position: relative;
         }
-        @media (min-width: 1024px) { /* lg */
+        @media (min-width: 640px) {
             .grid-cell {
                 font-size: 1rem; /* Desktop font size */
             }
@@ -69,7 +61,7 @@
             font-weight: 600;
             color: #6b7280; /* gray-500 */
         }
-        @media (min-width: 1024px) { /* lg */
+        @media (min-width: 640px) {
             .grid-label {
                 font-size: 0.75rem; /* Desktop font size */
             }
@@ -94,7 +86,7 @@
             border-color: #374151; /* gray-700 */
         }
         
-        /* My grid: placed mine */
+        /* NEW: My grid: placed mine */
         .my-grid .grid-cell.mine {
             background-color: #cce7ff; /* light-blue-100 */
             border-color: #a3d5ff;
@@ -109,7 +101,7 @@
         }
 
         /* Opponent grid: active turn hover effect */
-        .opponent-grid.turn-active .grid-cell:not(.miss):not(.hit):not(.mine-hit):not(.last-move):hover {
+        .opponent-grid.turn-active .grid-cell:not(.miss):not(.hit):not(.mine-hit):hover {
             background-color: #fef08a; /* yellow-200 */
             border-color: #fde047; /* yellow-300 */
         }
@@ -129,7 +121,7 @@
             color: #1f2937; /* gray-800 */
         }
         
-        /* All grids: mine hit */
+        /* NEW: All grids: mine hit */
         .grid-cell.mine-hit {
             /* Background-color is set by JS */
             border-color: #ef4444; /* red-500 */
@@ -151,7 +143,7 @@
             box-shadow: 0 0 10px #fde047;
         }
 
-        /* Style for valid move options */
+        /* NEW: Style for valid move options */
         .grid-cell.move-option {
             background-color: #cce7ff;
             border: 2px dashed #facc15; /* yellow-400 */
@@ -160,12 +152,6 @@
         .grid-cell.move-option:hover {
             background-color: #fef9c3; /* yellow-100 */
         }
-        
-        /* NEW: Last move highlight */
-        .grid-cell.last-move {
-            border: 3px solid #facc15; /* yellow-400 */
-            box-shadow: 0 0 10px #facc15;
-        }
 
         /* Player card when out */
         .player-out-card {
@@ -173,9 +159,9 @@
             border: 2px dashed #fca5a5; /* red-300 */
             color: #9ca3af; /* gray-400 */
             
-            /* Sizing adjusted for variable cell size */
-            width: calc( (var(--cell-size) * 7) + (2px * 6) + (8px * 2) - 17px );
-            height: calc( (var(--cell-size) * 7) + (2px * 6) + (8px * 2) + 18px + 20px );
+            /* Sizing for Mobile (20*7 + 2*6 + 16*2) = 140+12+32 = 184px */
+            width: 173px; 
+            height: 221px; /* (20*7 + 2*6 + 16*2 + 18+20) ~ 221 */
 
             display: flex;
             flex-direction: column;
@@ -185,13 +171,13 @@
         }
         
         /* Sizing for Desktop */
-        @media (min-width: 1024px) { /* lg */
+        @media (min-width: 640px) {
             .player-out-card {
+                width: 289px; /* (35*7 + 2*6 + 16*2) = 245+12+32 = 289 */
+                height: 385px;
                 padding: 16px;
             }
         }
-        
-        /* REMOVED Disconnected player styles */
 
 
         /* Modal backdrop */
@@ -236,20 +222,20 @@
             transform: rotate(-45deg);
         }
 
-        /* Game event log messages */
+        /* NEW: Game event log messages */
         .log-game-event {
             color: #DC2626; /* red-600 */
             font-style: italic;
             font-size: 0.875rem; /* text-sm */
         }
         
-        /* Chat messages */
+        /* NEW: Chat messages */
         .log-chat-message {
             font-size: 0.875rem; /* text-sm */
             word-break: break-word; /* Ensure long messages wrap */
         }
         
-        /* Kick Button Style */
+        /* NEW: Kick Button Style */
         .kick-button {
             font-size: 0.75rem; /* text-xs */
             font-weight: 500;
@@ -262,25 +248,15 @@
             text-decoration: underline;
         }
         
-        /* In-game kick button (on opponent grid) */
-        .kick-button-ingame {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            background-color: rgba(255, 255, 255, 0.8);
-            color: #DC2626;
-            border: 1px solid #DC2626;
-            border-radius: 4px;
-            padding: 0 4px;
-            font-size: 0.625rem; /* 10px */
-            font-weight: bold;
-            line-height: 1;
-            cursor: pointer;
-            z-index: 10;
+        /* NEW: Last move highlight */
+        .grid-cell.last-move {
+            animation: pulse-border 1.5s infinite;
+            box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.7); /* yellow-400 with opacity */
         }
-        .kick-button-ingame:hover {
-            background-color: #DC2626;
-            color: white;
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 0 0px rgba(250, 204, 21, 0.7); }
+            50% { box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.7); }
+            100% { box-shadow: 0 0 0 0px rgba(250, 204, 21, 0.7); }
         }
 
 
@@ -339,7 +315,7 @@
                     <span class="text-sm text-gray-500">Room:</span>
                     <span id="room-display" class="text-xl font-bold font-mono text-yellow-500"></span>
                 </div>
-                <!-- Exit Button -->
+                <!-- NEW: Exit Button -->
                 <div class="flex gap-2">
                     <button id="exit-room-button" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-200 text-sm">
                         Exit Room
@@ -353,12 +329,11 @@
             </div>
 
             <!-- Main Game Layout -->
-            <!-- Adjusted responsive classes -->
-            <div class="flex flex-col lg:flex-row gap-6 lg:gap-8">
+            <!-- RESPONSIVENESS: Changed to flex-col for all sizes -->
+            <div class="flex flex-col gap-6">
 
                 <!-- Left Column (My Grid + Setup) -->
-                <!-- Adjusted width for large screens -->
-                <div class="flex flex-col items-center lg:items-start flex-shrink-0 w-full lg:w-auto mx-auto lg:mx-0">
+                <div class="flex flex-col items-center lg:items-start flex-shrink-0 w-full lg:w-auto">
                     <!-- Setup Controls -->
                     <div id="setup-controls" class="hidden bg-white p-4 rounded-lg shadow-lg mb-6 text-center">
                         <h3 id="setup-instructions" class="text-xl font-semibold text-yellow-600">Place your 5 ships.</h3>
@@ -373,19 +348,18 @@
                     </div>
 
                     <!-- My Grid Container -->
-                    <div id="my-grid-container" class="bg-white p-2 sm:p-4 rounded-lg shadow-lg relative">
+                    <div id="my-grid-container" class="bg-white p-2 sm:p-4 rounded-lg shadow-lg mx-auto">
                         <!-- My grid will be inserted here -->
                     </div>
                 </div>
 
                 <!-- Right Column (Opponent Grids) -->
-                 <!-- Use flex-1 to take remaining space, min-w-0 to prevent overflow -->
-                <div class="flex-1 min-w-0">
+                <div class="flex-grow min-w-0">
                     <div class="bg-white p-2 sm:p-4 rounded-lg shadow-lg h-full">
                         <h3 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 text-center sm:text-left">Opponents</h3>
                         <!-- Opponent Grids Area -->
-                        <!-- Adjusted responsive grid columns -->
-                        <div id="opponent-grids-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:flex lg:flex-wrap justify-center lg:justify-start gap-2 sm:gap-4 overflow-y-auto p-1 sm:p-2 bg-gray-50 rounded-md" style="max-height: calc(100vh - 300px);">
+                        <!-- RESPONSIVENESS: Changed to a responsive grid -->
+                        <div id="opponent-grids-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-4 overflow-y-auto p-1 sm:p-2 bg-gray-50 rounded-md justify-items-center" style="max-height: calc(100vh - 300px);">
                             <!-- Opponent grids will be inserted here -->
                         </div>
                     </div>
@@ -432,11 +406,14 @@
                     <button id="start-game-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
                         Start Game
                     </button>
+                    <!-- REMOVED Voice chat text -->
                     <p id="start-game-error" class="text-red-500 text-sm mt-2 h-4"></p>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- REMOVED audio-streams div -->
 
     <!-- Generic Message Modal -->
     <div id="message-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
@@ -468,7 +445,8 @@
         import { 
             getAuth, 
             signInAnonymously, 
-            onAuthStateChanged 
+            onAuthStateChanged,
+            signInWithCustomToken // NEW: Added for Canvas environment
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, 
@@ -479,27 +457,24 @@
             onSnapshot, 
             arrayUnion, 
             serverTimestamp,
-            setLogLevel,
-            Timestamp,
-            deleteDoc // NEW: Import deleteDoc
+            setLogLevel
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Game Constants ---
         const GRID_SIZE = 6;
         const SHIP_COUNT = 5;
-        const MINE_COUNT = 3;
+        const MINE_COUNT = 3; // NEW
         const MAX_PLAYERS = 20;
-        // REMOVED Presence Constants
 
         // --- Global Variables ---
         let app, db, auth;
         let userId, myPlayerName, currentRoomCode;
         let localGameData = null;
-        let oldLocalGameData = null; // Store previous state
         let unsubscribeRoom = null;
         let isSpectator = false;
-        // REMOVED presenceIntervalId
-        // REMOVED disconnectedPlayers
+        let isExiting = false; // NEW: Flag to prevent double exit operations
+        
+        // REMOVED WebRTC Globals
         
         // State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
@@ -529,18 +504,24 @@
         const DEFAULT_COLOR = '#6b7280'; // Gray
 
         // --- Firebase Configuration ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyBaNyxRMOTb7a-NYu7Y1J1Q4pSweC-qZUQ",
-            authDomain: "battleship-royal.firebaseapp.com",
-            projectId: "battleship-royal",
-            storageBucket: "battleship-royal.firebasestorage.app",
-            messagingSenderId: "246405120799",
-            appId: "1:246405120799:web:1ac4da9d7c951dfa96262a"
-        };
-        
-        // This is a unique ID for your app's data in the database.
-        const appId = 'battleship-royale-local'; 
+        // NEW: Use variables provided by the Canvas environment
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'battleship-royale-local'; 
 
+        // Check if config is loaded, provide a fallback for local testing if __firebase_config is not set
+        if (!firebaseConfig.apiKey) {
+            console.warn("Firebase config not found, using local fallback.");
+            // A fallback config for local testing if needed, but will be overwritten in production
+            Object.assign(firebaseConfig, {
+                apiKey: "AIzaSyBaNyxRMOTb7a-NYu7Y1J1Q4pSweC-qZUQ",
+                authDomain: "battleship-royal.firebaseapp.com",
+                projectId: "battleship-royal",
+                storageBucket: "battleship-royal.firebasestorage.app",
+                messagingSenderId: "246405120799",
+                appId: "1:246405120799:web:1ac4da9d7c951dfa96262a"
+            });
+        }
+        
         // --- DOM Elements ---
         const loadingScreen = document.getElementById('loading-screen');
         const loginScreen = document.getElementById('login-screen');
@@ -555,12 +536,12 @@
         const roomDisplay = document.getElementById('room-display');
         const gameStatus = document.getElementById('game-status');
         const myNameDisplay = document.getElementById('my-name-display');
-        const exitRoomButton = document.getElementById('exit-room-button');
+        const exitRoomButton = document.getElementById('exit-room-button'); // NEW
         
         const setupControls = document.getElementById('setup-controls');
         const setupInstructions = document.getElementById('setup-instructions');
         const shipsPlacedCount = document.getElementById('ships-placed-count');
-        const minesPlacedCount = document.getElementById('mines-placed-count');
+        const minesPlacedCount = document.getElementById('mines-placed-count'); // NEW
         const readyButton = document.getElementById('ready-button');
         
         const myGridContainer = document.getElementById('my-grid-container');
@@ -584,6 +565,7 @@
         const gameOverModal = document.getElementById('game-over-modal');
         const winnerName = document.getElementById('winner-name');
         const playAgainButton = document.getElementById('play-again-button');
+        // REMOVED audioStreamsContainer
 
         // --- Utility Functions ---
 
@@ -612,10 +594,9 @@
 
         /**
          * Gets the Firestore path for the current room.
-         * @returns {string | null} - The document path or null if no room code.
+         * @returns {string} - The document path.
          */
         function getRoomPath() {
-            if (!currentRoomCode) return null; // Safety check
             return `artifacts/${appId}/public/data/battleship_rooms/${currentRoomCode}`;
         }
 
@@ -658,7 +639,6 @@
          * @returns {object} - The player object.
          */
         function createNewPlayer() {
-            // REMOVED lastSeen from initial object
             return {
                 userId: userId,
                 name: myPlayerName,
@@ -669,30 +649,10 @@
                 shipsLeft: SHIP_COUNT, 
                 isOut: false,
                 ready: false,
-                isSkippingTurn: false,
+                isSkippingTurn: false
+                // REMOVED WebRTC Signaling fields
             };
         }
-        
-        /**
-         * Resets a player object for a new game.
-         * Keeps userId, name, color. Resets game state.
-         * @param {object} player - The player object to reset.
-         * @returns {object} - The reset player object.
-         */
-        function resetPlayerForNewGame(player) {
-             console.log(`Resetting player: ${player.name}`); // DEBUG
-            return {
-                ...player, // Keep existing properties like userId, name, color
-                grid: Array(GRID_SIZE * GRID_SIZE).fill(0),
-                shipsPlaced: 0,
-                minesPlaced: 0,
-                shipsLeft: SHIP_COUNT, 
-                isOut: false, // Ensure they are back in the game
-                ready: false,
-                isSkippingTurn: false,
-            };
-        }
-
 
         /**
          * Creates the HTML for a single player's grid.
@@ -702,17 +662,12 @@
          * @returns {string} - The HTML string for the grid.
          */
         function createGridHTML(player, isMe, isTurnActive = false) {
-            let gridClasses = isMe ? 'my-grid' : 'opponent-grid' + (isTurnActive ? ' turn-active' : '');
+            const gridClasses = isMe ? 'my-grid' : 'opponent-grid' + (isTurnActive ? ' turn-active' : '');
             let cellsHTML = '';
             const playerColor = player.color || DEFAULT_COLOR;
-            const isCreator = localGameData.creatorId === userId;
             
-            // SIMPLIFIED: Only host can kick now
-            const kickButtonHTML = (isCreator && !isMe)
-                ? `<button data-kick-id="${player.userId}" class="kick-button-ingame">Kick</button>`
-                : '';
-                
-            // REMOVED disconnectedLabelHTML
+            // NEW: Get last move data
+            const lastMove = localGameData?.lastMove;
             
             // Add column headers
             cellsHTML += '<div class="grid-label"></div>'; // Empty corner
@@ -765,7 +720,7 @@
                     } else {
                         // Opponent Grid: Show only hits and misses
                         if (typeof cellState === 'object') {
-                             if (cellState.type === 'miss') {
+                                if (cellState.type === 'miss') {
                                 cellClass += ' miss';
                                 content = 'X';
                                 style = `color: ${cellState.attackerColor || DEFAULT_COLOR};`;
@@ -781,17 +736,17 @@
                         }
                     }
                     
-                    if (localGameData.lastMove && localGameData.lastMove.playerId === player.userId && localGameData.lastMove.cellIndex === i) {
+                    // NEW: Add last-move highlight
+                    if (lastMove && player.userId === lastMove.targetPlayerId && i === lastMove.cellIndex) {
                         cellClass += ' last-move';
                     }
-                    
+
                     cellsHTML += `<div class="${cellClass}" data-player-id="${player.userId}" data-row="${r}" data-col="${c}" style="${style}">${content}</div>`;
                 }
             }
 
             return `
-                <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'} relative">
-                    ${kickButtonHTML} 
+                <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
                     <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name}</h3>
                     <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
                     ${player.isSkippingTurn ? '<p class="text-center text-xs sm:text-sm text-red-500 font-bold mb-2">SKIPPING TURN</p>' : ''}
@@ -854,11 +809,11 @@
             
             const myPlayer = roomData.players.find(p => p.userId === userId);
 
-            // Kicked / Rejoin Logic
+            // NEW: Kicked / Rejoin Logic
             if (!myPlayer && !isSpectator) {
                 // Kicked or data mismatch, return to login
                 showMessage("You have been removed from the game.");
-                showLoginScreen();
+                handleExitRoom(); // Use handleExitRoom to cleanly exit
                 return;
             }
             
@@ -939,7 +894,6 @@
                     const isCreator = localGameData.creatorId === userId; // NEW: Check if I am creator
                     
                     roomData.players.forEach(player => {
-                         // SIMPLIFIED: Host-only kick button in waiting room
                         const kickButtonHTML = (isCreator && player.userId !== userId)
                             ? `<button data-kick-id="${player.userId}" class="kick-button">Kick</button>`
                             : '';
@@ -987,18 +941,7 @@
                     break;
                     
                 case "playing":
-                     // Ensure currentPlayerIndex is valid before accessing players array
-                    if (roomData.currentPlayerIndex < 0 || roomData.currentPlayerIndex >= roomData.players.length) {
-                        console.error("Invalid currentPlayerIndex in render (playing):", roomData.currentPlayerIndex);
-                        gameStatus.textContent = "Error: Invalid game state."; // Show an error
-                        break; 
-                    }
                     const currentPlayer = roomData.players[roomData.currentPlayerIndex];
-                     if (!currentPlayer) { // Extra safety check
-                        console.error("Current player is undefined for index:", roomData.currentPlayerIndex);
-                        gameStatus.textContent = "Error: Cannot find current player.";
-                        break;
-                     }
                     const isMyTurn = currentPlayer.userId === userId;
                     
                     if (isMyTurn) {
@@ -1009,18 +952,9 @@
                             // Skip turn immediately
                             setTimeout(handleSkipTurn, 2000); // 2s delay to show message
                         } else {
-                            if (oldLocalGameData) {
-                                // Ensure index is valid before checking old state
-                                if (oldLocalGameData.currentPlayerIndex >= 0 && oldLocalGameData.currentPlayerIndex < oldLocalGameData.players.length) {
-                                    const oldPlayer = oldLocalGameData.players[oldLocalGameData.currentPlayerIndex];
-                                    if (oldPlayer?.userId !== userId) {
-                                        hasMovedShipThisTurn = false;
-                                    }
-                                } else {
-                                     hasMovedShipThisTurn = false; // Reset if old index was invalid
-                                }
-                            } else {
-                                 hasMovedShipThisTurn = false; // Reset if no old data
+                            const oldPlayer = oldLocalGameData ? oldLocalGameData.players[oldLocalGameData.currentPlayerIndex] : null;
+                            if (oldPlayer?.userId !== userId) {
+                                hasMovedShipThisTurn = false;
                             }
 
                             opponentGridsContainer.style.pointerEvents = 'auto'; 
@@ -1080,8 +1014,6 @@
                          if (player.userId === userId) return;
                          opponentGridsContainer.innerHTML += createGridHTML(player, false, false);
                     });
-                    
-                    // REMOVED Stop presence updates (no longer needed here)
                     break;
             }
         }
@@ -1159,7 +1091,7 @@
                     gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }],
                     createdAt: serverTimestamp(),
                     winner: null,
-                    lastMove: null // Initialize lastMove
+                    lastMove: null // NEW: For last move highlight
                 };
                 await setDoc(roomRef, newRoomData);
                 
@@ -1180,28 +1112,16 @@
             }
         }
 
-        async function handleJoinRoom(isReload = false) {
-             let name, roomCode;
-            
-            if (isReload) {
-                name = localStorage.getItem('savedPlayerName');
-                roomCode = localStorage.getItem('savedRoomCode');
-                 console.log(`Reloading - Name: ${name}, Code: ${roomCode}`); // DEBUG
-            } else {
-                name = nameInput.value.trim();
-                roomCode = roomInput.value.trim().toUpperCase();
-            }
+        async function handleJoinRoom() {
+            const name = nameInput.value.trim();
+            const roomCode = roomInput.value.trim().toUpperCase();
 
             if (!name) {
-                console.log("Join/Reload failed: No name provided."); // DEBUG
                 loginError.textContent = "Please enter your name.";
-                if (isReload) showLoginScreen(); // Saved data invalid
                 return;
             }
-            if (!roomCode || roomCode.length !== 5) { // Added !roomCode check
-                 console.log("Join/Reload failed: Invalid room code."); // DEBUG
+            if (roomCode.length !== 5) {
                 loginError.textContent = "Room code must be 5 characters.";
-                if (isReload) showLoginScreen(); // Saved data invalid
                 return;
             }
             
@@ -1212,7 +1132,6 @@
 
             myPlayerName = name;
             currentRoomCode = roomCode;
-             console.log(`Attempting to join room: ${currentRoomCode}`); // DEBUG
             
             const roomRef = doc(db, getRoomPath());
             
@@ -1220,98 +1139,65 @@
                 const roomSnap = await getDoc(roomRef);
                 
                 if (!roomSnap.exists()) {
-                     console.log("Join/Reload failed: Room not found."); // DEBUG
-                    if (isReload) {
-                        // Room doesn't exist anymore, just go to login
-                        showLoginScreen();
-                        return;
-                    }
                     throw new Error("Room not found. Check the code.");
                 } 
                 
                 const roomData = roomSnap.data();
-                 console.log("Room data found:", roomData); // DEBUG
                 const isRejoining = roomData.players.find(p => p.userId === userId);
 
                 if (isRejoining) {
-                     console.log("Player is rejoining."); // DEBUG
-                    // Player rejoining, check if they are marked as 'out'
-                    if (isRejoining.isOut) {
-                         console.log("Rejoining player is marked as 'out', showing login."); // DEBUG
-                         if (isReload) {
-                            showLoginScreen(); // Was kicked/left, clear session
-                            return;
-                        }
-                        throw new Error("You were removed from this game. You cannot rejoin.");
-                    }
-                    // Not out, update name 
-                    const playerIndex = roomData.players.findIndex(p => p.userId === userId);
-                    await updateDoc(roomRef, {
-                         [`players.${playerIndex}.name`]: myPlayerName,
-                         // REMOVED lastSeen update
-                    });
+                    // Player rejoining, just update name. Color is preserved.
+                    const newPlayers = roomData.players.map(p => 
+                        p.userId === userId ? { ...p, name: myPlayerName, isOut: false } : p // Also mark as not-out
+                    );
+                    await updateDoc(roomRef, { players: newPlayers });
                     isSpectator = false;
                 } else {
-                     console.log("Player is joining for the first time or as new user."); // DEBUG
                     // New player joining
                     if (roomData.gameState === "waiting") {
                         if (roomData.players.length >= MAX_PLAYERS) { 
                             throw new Error(`Room is full (max ${MAX_PLAYERS} players).`);
                         }
-                        const newPlayer = createNewPlayer(); // Without lastSeen
-                        // Add player
+                        const newPlayer = createNewPlayer();
                         await updateDoc(roomRef, {
                             players: arrayUnion(newPlayer),
                             gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined the room.` })
                         });
-                        // REMOVED separate timestamp update
-
                         isSpectator = false;
                     } else {
                         // Game in progress, join as spectator
-                         console.log("Joining as spectator."); // DEBUG
                         isSpectator = true;
-                        // Don't save session for spectators
-                        localStorage.removeItem('savedRoomCode');
-                        localStorage.removeItem('savedPlayerName');
                         await updateDoc(roomRef, {
                              gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined as a spectator.` })
                         });
                     }
                 }
                 
-                if (!isReload && !isSpectator) { // Don't save for spectators
-                    localStorage.setItem('savedRoomCode', currentRoomCode);
-                    localStorage.setItem('savedPlayerName', myPlayerName);
-                }
+                // NEW: Save to localStorage for reload
+                localStorage.setItem('savedRoomCode', currentRoomCode);
+                localStorage.setItem('savedPlayerName', myPlayerName);
                 
                 showGameScreen();
                 listenToRoom();
                 
             } catch (err) {
                 console.error("Error joining room:", err);
-                if (isReload) {
-                    showLoginScreen();
-                } else {
-                    loginError.textContent = err.message;
-                    joinButton.disabled = false;
-                    joinButton.textContent = "Join Game";
-                    createRoomButton.disabled = false;
-                }
+                loginError.textContent = err.message;
+                joinButton.disabled = false;
+                joinButton.textContent = "Join Game";
+                createRoomButton.disabled = false;
             }
         }
         
         async function handleStartGame() {
             if (!localGameData) return;
-            // Check only active (not isOut) players for count and color
-            const activePlayers = localGameData.players.filter(p => !p.isOut); 
-            if (activePlayers.length < 2) {
-                startGameError.textContent = "Need at least 2 active players to start.";
+            if (localGameData.players.length < 2) {
+                startGameError.textContent = "Need at least 2 players to start.";
                 return;
             }
 
-            if (activePlayers.some(p => p.color === null)) {
-                 startGameError.textContent = "All active players must choose a color before starting.";
+            if (localGameData.players.some(p => p.color === null)) {
+                 startGameError.textContent = "All players must choose a color before starting.";
                  return;
             }
             
@@ -1322,6 +1208,7 @@
             try {
                 await updateDoc(roomRef, {
                     gameState: "setup",
+                    lastMove: null, // Clear last move on new game start
                     gameLog: arrayUnion({ type: 'game', message: "The game is starting! Place your items." })
                 });
             } catch (err) {
@@ -1331,6 +1218,7 @@
             }
         }
         
+        // REMOVED ALL WebRTC Functions (handleJoinVoiceChat, etc.)
         
         /**
          * Handles clicking on a grid cell (for setup, moving, or attacking).
@@ -1341,28 +1229,12 @@
             if (!cellEl) return;
             if (!localGameData || isSpectator) return; // Spectators can't click grids
             
-            // FIX: Check for kick button using classList
-            if (e.target.classList.contains('kick-button-ingame')) {
-                handleKickOrExit(e, 'kick'); // Pass event to extract dataset
-                return;
-            }
-            
             const row = parseInt(cellEl.dataset.row);
             const col = parseInt(cellEl.dataset.col);
             if (isNaN(row) || isNaN(col)) return; 
             
             const index = toIndex(row, col);
-            
-            // Ensure currentPlayerIndex is valid before accessing players array
-             if (!localGameData.players || localGameData.currentPlayerIndex < 0 || localGameData.currentPlayerIndex >= localGameData.players.length) {
-                console.error("Invalid currentPlayerIndex or players array:", localGameData.currentPlayerIndex, localGameData.players);
-                return; // Or handle appropriately
-            }
             const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
-             if (!currentPlayer) { // Extra safety
-                 console.error("Current player is undefined despite valid index:", localGameData.currentPlayerIndex);
-                 return;
-             }
             const isMyTurn = localGameData.gameState === 'playing' && currentPlayer.userId === userId;
 
             // --- Move Ship Logic ---
@@ -1492,20 +1364,15 @@
                 p.userId === userId ? { ...p, ready: true } : p
             );
             
-            // Check only players who are not 'out'
-            const activePlayers = newPlayers.filter(p => !p.isOut);
-            const allReady = activePlayers.length > 0 && activePlayers.every(p => p.ready); // Ensure at least one active player
-
+            const allReady = newPlayers.every(p => p.ready);
             
             const roomRef = doc(db, getRoomPath());
             try {
                 if (allReady) {
-                     // Find the first active player to start
-                    const startingPlayerIndex = newPlayers.findIndex(p => !p.isOut);
                     await updateDoc(roomRef, {
                         players: newPlayers,
                         gameState: "playing",
-                        currentPlayerIndex: startingPlayerIndex >= 0 ? startingPlayerIndex : 0, // Fallback, though shouldn't happen if allReady is true
+                        currentPlayerIndex: 0, 
                         gameLog: arrayUnion({ type: 'game', message: "All players are ready! The battle begins!" })
                     });
                 } else {
@@ -1527,32 +1394,9 @@
             cancelMove();
             opponentGridsContainer.style.pointerEvents = 'none';
 
-            // Ensure currentPlayerIndex is valid before accessing players array
-             if (!localGameData || !localGameData.players || localGameData.currentPlayerIndex < 0 || localGameData.currentPlayerIndex >= localGameData.players.length) {
-                console.error("Invalid currentPlayerIndex or players array before attack:", localGameData?.currentPlayerIndex, localGameData?.players);
-                opponentGridsContainer.style.pointerEvents = 'auto'; // Re-enable clicks
-                return; 
-            }
             const attacker = localGameData.players[localGameData.currentPlayerIndex];
-             if (!attacker) {
-                 console.error("Attacker is undefined for index:", localGameData.currentPlayerIndex);
-                 opponentGridsContainer.style.pointerEvents = 'auto'; 
-                 return;
-             }
             const targetPlayer = localGameData.players.find(p => p.userId === targetPlayerId);
-             if (!targetPlayer) {
-                 console.error("Target player not found for ID:", targetPlayerId);
-                 opponentGridsContainer.style.pointerEvents = 'auto'; 
-                 return;
-             }
             
-            // Prevent attacking players who are already out
-            if (targetPlayer.isOut) {
-                showMessage(`${targetPlayer.name} is already out!`);
-                opponentGridsContainer.style.pointerEvents = 'auto'; 
-                return;
-            }
-
             if (typeof targetPlayer.grid[cellIndex] === 'object') {
                 showMessage("That position has already been attacked!");
                 opponentGridsContainer.style.pointerEvents = 'auto'; 
@@ -1561,7 +1405,7 @@
             
             const targetCell = targetPlayer.grid[cellIndex];
             const wasHit = targetCell === 1;
-            const wasMine = targetCell === 2;
+            const wasMine = targetCell === 2; // NEW
             const coord = toGridCoord(cellIndex);
             
             let logMsg = { type: 'game', message: "" };
@@ -1585,27 +1429,29 @@
                     newIsOut = true;
                     newLogMessages.push({ type: 'game', message: `${targetPlayer.name} has been eliminated!` });
                 }
-            } else if (wasMine) {
+            } else if (wasMine) { // NEW: Mine logic
                 logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... IT'S A MINE! 💥`;
                 newGrid[cellIndex] = { type: 'mine-hit', attackerId: attacker.userId, attackerColor: attackerColor };
                 
+                // Mark attacker to skip their next turn
                 newPlayers = newPlayers.map(p => 
                     p.userId === attacker.userId ? { ...p, isSkippingTurn: true } : p
                 );
                 newLogMessages.push({ type: 'game', message: `${attacker.name} hit a mine and will skip their next turn!` });
             } else {
+                // Was a miss
                 logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... MISS! X`;
                 newGrid[cellIndex] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor };
             }
             
-            newLogMessages.unshift(logMsg);
+            newLogMessages.unshift(logMsg); // Add main log message to start
             
-            // Update the target player state within the newPlayers array
+            // Update target player
             newPlayers = newPlayers.map(p => 
                 p.userId === targetPlayerId ? { ...p, grid: newGrid, shipsLeft: newShipsLeft, isOut: newIsOut } : p
             );
 
-            // Check for game over using the updated newPlayers array
+            // 2. Check for game over
             const playersStillIn = newPlayers.filter(p => !p.isOut);
             if (playersStillIn.length === 1) {
                 newGameState = "over";
@@ -1616,44 +1462,12 @@
                 newLogMessages.push({ type: 'game', message: "GAME OVER! It's a draw!" });
             }
             
-            // Determine next turn
-            if (newGameState === "playing" && !wasHit) { // Turn advances on miss or mine hit
-                 // Ensure there are active players before trying to find the next one
-                if (playersStillIn.length > 0) {
-                    do {
-                        nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
-                         // Extra check to ensure index is valid before accessing isOut
-                        if (nextPlayerIndex < 0 || nextPlayerIndex >= newPlayers.length) {
-                             console.error("Next player index went out of bounds:", nextPlayerIndex);
-                             nextPlayerIndex = -1; // Indicate error
-                             break;
-                         }
-                    } while (newPlayers[nextPlayerIndex].isOut);
-                     if (nextPlayerIndex === -1) { // Handle case where loop failed
-                         console.error("Could not find next active player.");
-                         // Decide how to handle this - maybe end game?
-                     }
-                } else {
-                    // No players left
-                    nextPlayerIndex = -1; // Or handle as appropriate
-                }
-            } else if (newGameState === "playing" && wasHit) {
-                 // Hit, turn does not advance, but check if current player is still valid (in case they got eliminated somehow?)
-                 if (nextPlayerIndex < 0 || nextPlayerIndex >= newPlayers.length || newPlayers[nextPlayerIndex].isOut) {
-                      // If the current player got eliminated on their turn, find next
-                      if (playersStillIn.length > 0) {
-                            do {
-                                nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
-                                if (nextPlayerIndex < 0 || nextPlayerIndex >= newPlayers.length) break; // Safety break
-                            } while (newPlayers[nextPlayerIndex].isOut);
-                            if (nextPlayerIndex < 0 || nextPlayerIndex >= newPlayers.length) {
-                                console.error("Could not find next active player after current player was eliminated.");
-                                nextPlayerIndex = -1;
-                            }
-                       } else {
-                           nextPlayerIndex = -1;
-                       }
-                 }
+            // 3. Determine next turn
+            // Turn only advances on a MISS or a MINE HIT
+            if (newGameState === "playing" && !wasHit) {
+                do {
+                    nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
+                } while (newPlayers[nextPlayerIndex].isOut);
             }
             
             const roomRef = doc(db, getRoomPath());
@@ -1664,53 +1478,34 @@
                     winner: newWinner,
                     currentPlayerIndex: nextPlayerIndex,
                     gameLog: arrayUnion(...newLogMessages),
-                    lastMove: { playerId: targetPlayerId, cellIndex: cellIndex }
+                    // NEW: Update last move
+                    lastMove: {
+                        targetPlayerId: targetPlayerId,
+                        cellIndex: cellIndex,
+                        attackerId: attacker.userId
+                    },
                 });
             } catch (err) {
                 console.error("Error during attack:", err);
                 showMessage("Error processing attack. Please try again.");
-                // Ensure clicks are re-enabled if the update fails
-                opponentGridsContainer.style.pointerEvents = 'auto'; 
             } 
         }
 
         /**
-         * Handles the automatic turn skip after hitting a mine.
+         * NEW: Handles the automatic turn skip after hitting a mine.
          */
         async function handleSkipTurn() {
             if (!localGameData) return;
             
-             // Ensure currentPlayerIndex is valid before accessing players array
-             if (!localGameData.players || localGameData.currentPlayerIndex < 0 || localGameData.currentPlayerIndex >= localGameData.players.length) {
-                console.error("Invalid currentPlayerIndex or players array during skip:", localGameData?.currentPlayerIndex, localGameData?.players);
-                return; 
-            }
-            const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
-            // Only the player whose turn it is should execute this
-            if (currentPlayer.userId !== userId || !currentPlayer.isSkippingTurn) return; 
-
             let newPlayers = localGameData.players.map(p => 
                 p.userId === userId ? { ...p, isSkippingTurn: false } : p
             );
             
             // Find next player
             let nextPlayerIndex = localGameData.currentPlayerIndex;
-            const playersStillIn = newPlayers.filter(p => !p.isOut);
-
-             if (playersStillIn.length > 0) {
-                 let safetyCounter = 0; // Prevent infinite loops
-                do {
-                    nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
-                    if (nextPlayerIndex < 0 || nextPlayerIndex >= newPlayers.length) break; // Safety break
-                    safetyCounter++;
-                } while (newPlayers[nextPlayerIndex].isOut && safetyCounter <= newPlayers.length);
-                 if (safetyCounter > newPlayers.length || nextPlayerIndex < 0 || nextPlayerIndex >= newPlayers.length) {
-                     console.error("Could not find next active player during skip turn.");
-                     nextPlayerIndex = -1; // Indicate error
-                 }
-            } else {
-                nextPlayerIndex = -1; // No active players left
-            }
+            do {
+                nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
+            } while (newPlayers[nextPlayerIndex].isOut);
             
             const roomRef = doc(db, getRoomPath());
             try {
@@ -1726,7 +1521,7 @@
 
 
         /**
-         * Handles sending a chat message.
+         * NEW: Handles sending a chat message.
          */
         async function handleSendChat() {
             const message = chatInput.value.trim();
@@ -1783,9 +1578,9 @@
 
             for (const move of potentialMoves) {
                 if (move.r >= 0 && move.r < GRID_SIZE && move.c >= 0 && move.c < GRID_SIZE) {
-                    const toIndex = toIndex(move.r, move.c);
-                    if (grid[toIndex] === 0) {
-                        validMoveIndices.push(toIndex);
+                    const toIndexVal = toIndex(move.r, move.c);
+                    if (grid[toIndexVal] === 0) {
+                        validMoveIndices.push(toIndexVal);
                     }
                 }
             }
@@ -1839,258 +1634,130 @@
         }
         
         /**
-         * NEW: Deletes the current room document from Firestore.
-         */
-        async function deleteRoom() {
-            const roomPath = getRoomPath();
-            if (!roomPath) return;
-            console.log("Attempting to delete room:", roomPath); // DEBUG
-            const roomRef = doc(db, roomPath);
-            try {
-                 if (unsubscribeRoom) { // Unsubscribe before deleting
-                     unsubscribeRoom();
-                     unsubscribeRoom = null;
-                 }
-                await deleteDoc(roomRef);
-                console.log("Room deleted successfully."); // DEBUG
-            } catch (err) {
-                console.error("Error deleting room:", err);
-                // Don't necessarily show error to user, maybe log it
-            }
-        }
-        
-        /**
-         * NEW: Checks if the room should be deleted (game over and all players out).
-         */
-        function checkAndDeleteRoomIfEmpty() {
-             console.log("Checking if room should be deleted..."); // DEBUG
-            if (localGameData && localGameData.gameState === 'over') {
-                 // Check if *only* the current user remains (and they are marked isOut because they clicked Exit)
-                 const activePlayers = localGameData.players.filter(p => !p.isOut);
-                 console.log("Game is over. Active players count:", activePlayers.length); // DEBUG
-                if (activePlayers.length === 0) {
-                     console.log("Game is over and no active players remain. Deleting room."); // DEBUG
-                    deleteRoom(); // Call delete function
-                    return true; // Indicate room was deleted
-                }
-            } else {
-                 console.log("Game not over or localGameData missing, not deleting room."); // DEBUG
-            }
-            return false; // Indicate room was not deleted
-        }
-
-
-        /**
-         * Handles kicking a player (from any state) or exiting.
+         * NEW: Handles kicking a player from the waiting room.
          * @param {Event} e - The click event.
          */
-        async function handleKickOrExit(e, exitType) {
-             console.log(`handleKickOrExit called with type: ${exitType}`); // DEBUG
-            let kickId;
-            let logMessage;
+        async function handleKickPlayer(e) {
+            const kickId = e.target.dataset.kickId;
+            if (!kickId || !localGameData || localGameData.creatorId !== userId) return;
             
-            if (exitType === 'kick') {
-                kickId = e.target.dataset.kickId;
-                if (!kickId || !localGameData) return; 
-
-                const isCreator = localGameData.creatorId === userId;
-                
-                 // SIMPLIFIED: Only allow kick if host
-                 if (!isCreator) {
-                     showMessage("Only the host can kick players.");
-                     return;
-                 }
-
-            } else {
-                // Self-exit
-                kickId = userId;
-            }
-            
-            const kickedPlayer = localGameData.players.find(p => p.userId === kickId);
-            if (!kickedPlayer || kickedPlayer.isOut) {
-                 console.log("Kick/Exit aborted: Player not found or already out."); // DEBUG
-                return; // Can't kick someone already out
+            if (localGameData.gameState !== 'waiting') {
+                showMessage("Can only kick players from the waiting room.");
+                return;
             }
 
-            // Mark player as 'out'. Don't remove, to preserve scores/grids.
-            let newPlayers = localGameData.players.map(p => 
-                p.userId === kickId ? { ...p, isOut: true, shipsLeft: 0 } : p
-            );
-
-            if (exitType === 'kick') {
-                logMessage = { type: 'game', message: `${kickedPlayer.name} was kicked.` };
-            } else {
-                logMessage = { type: 'game', message: `${kickedPlayer.name} left the game.` };
-            }
-
-            let newGameState = localGameData.gameState;
-            let newWinner = null;
-            let newPlayerIndex = localGameData.currentPlayerIndex;
-            
-            // Check for game over
-            const playersStillIn = newPlayers.filter(p => !p.isOut);
-             console.log("Players still in after kick/exit:", playersStillIn.length); // DEBUG
-             
-            if (newGameState !== 'waiting' && newGameState !== 'setup') {
-                if (playersStillIn.length === 1) {
-                     console.log("Game over: One player left."); // DEBUG
-                    newGameState = "over";
-                    newWinner = playersStillIn[0].userId;
-                    // Adjust log message for automatic win
-                    const winnerName = playersStillIn[0].name; 
-                    logMessage = { type: 'game', message: `${kickedPlayer.name} left. ${winnerName} is the winner!` };
-                } else if (playersStillIn.length === 0) {
-                     console.log("Game over: No players left."); // DEBUG
-                    newGameState = "over";
-                    logMessage = { type: 'game', message: "Everyone left. It's a draw!" };
-                }
-            }
-
-             // Ensure the current index is still valid before checking the player at that index
-             let currentTurnPlayerId = null;
-             if (localGameData.players && newPlayerIndex >= 0 && newPlayerIndex < localGameData.players.length) {
-                 currentTurnPlayerId = localGameData.players[newPlayerIndex]?.userId;
-             }
-
-            // Advance turn if the kicked player was the current player AND the game is still playing
-            if (newGameState === 'playing' && currentTurnPlayerId === kickId) {
-                if (playersStillIn.length > 0) {
-                     console.log("Advancing turn because current player was kicked."); // DEBUG
-                     let safetyCounter = 0;
-                    do {
-                        newPlayerIndex = (newPlayerIndex + 1) % newPlayers.length;
-                        if (newPlayerIndex < 0 || newPlayerIndex >= newPlayers.length) break;
-                        safetyCounter++;
-                    } while (newPlayers[newPlayerIndex].isOut && safetyCounter <= newPlayers.length);
-                     if (safetyCounter > newPlayers.length || newPlayerIndex < 0 || newPlayerIndex >= newPlayers.length) {
-                         console.error("Could not find next active player after kick.");
-                         newPlayerIndex = -1; // Indicate error state
-                     }
-                } else {
-                     console.log("No players left to advance turn to."); // DEBUG
-                     newPlayerIndex = -1; // No valid players left
-                }
-            } else if (newPlayerIndex >= newPlayers.length || (newPlayers[newPlayerIndex]?.isOut && playersStillIn.length > 0)) {
-                 // Current player index might now be invalid or point to an 'out' player, find the next valid one
-                 console.log("Current player index is invalid or points to an 'out' player, finding next."); // DEBUG
-                 if (playersStillIn.length > 0) {
-                     let validIndex = newPlayers.findIndex(p => !p.isOut);
-                     newPlayerIndex = validIndex >= 0 ? validIndex : -1;
-                 } else {
-                     newPlayerIndex = -1;
-                 }
-            }
+            const newPlayers = localGameData.players.filter(p => p.userId !== kickId);
+            const kickedPlayerName = localGameData.players.find(p => p.userId === kickId)?.name || 'A player';
             
             const roomRef = doc(db, getRoomPath());
             try {
-                 // Create update payload first
-                 const updatePayload = { 
+                await updateDoc(roomRef, { 
                     players: newPlayers,
-                    gameLog: arrayUnion(logMessage),
-                    gameState: newGameState,
-                    winner: newWinner,
-                    currentPlayerIndex: newPlayerIndex
-                 };
-                 console.log("Updating Firestore with kick/exit data:", updatePayload); // DEBUG
-                 
-                await updateDoc(roomRef, updatePayload);
-                
-                // If exiting, leave the page *after* update completes
-                if (exitType === 'exit') {
-                     // Check if this exit triggered game over and if I was the last one
-                     if (updatePayload.gameState === 'over' && playersStillIn.length === 0) {
-                         console.log("Exiting player was the last one in an 'over' game. Deleting room."); // DEBUG
-                         await deleteRoom(); // Await deletion before leaving
-                     }
-                    showLoginScreen(); // Go to login screen after self-exit
-                } else {
-                     // If kicking, check if the room needs deletion *after* the kick
-                    if (updatePayload.gameState === 'over' && playersStillIn.length === 0) {
-                         console.log("Kick resulted in game over with no players. Deleting room."); // DEBUG
-                        await deleteRoom(); // No need to await here, host remains on screen briefly
-                    }
-                }
-                
+                    gameLog: arrayUnion({ type: 'game', message: `${kickedPlayerName} was kicked by the host.` })
+                });
             } catch (err) {
-                console.error("Error kicking/exiting player:", err);
-                showMessage("Error removing player. Please try again.");
+                console.error("Error kicking player:", err);
+                showMessage("Error kicking player. Please try again.");
             }
         }
-        
+
         /**
-         * NEW: Handles the "Play Again" button click. Only the host can trigger the reset.
+         * NEW: Handles player exiting the room cleanly.
          */
-        async function handlePlayAgain() {
-            if (!localGameData || localGameData.gameState !== 'over') return;
+        async function handleExitRoom() {
+            if (isExiting) return; // Prevent multiple calls
+            isExiting = true;
+            exitRoomButton.disabled = true;
 
-            gameOverModal.classList.add('hidden'); // Close modal for everyone
-
-            // Only the host resets the game state
-            if (localGameData.creatorId === userId) {
-                console.log("Host clicked Play Again. Resetting game..."); // DEBUG
-                
-                // Keep only players who are NOT marked as 'out'
-                const playersToKeep = localGameData.players.filter(p => !p.isOut);
-                 if (playersToKeep.length === 0) {
-                     console.log("No players left to restart with. Deleting room."); // DEBUG
-                     await deleteRoom(); // Delete room if host is the only one left
-                     showLoginScreen(); // Go to login after deleting
-                     return;
-                 }
-                
-                // Reset the state for remaining players
-                const resetPlayers = playersToKeep.map(p => resetPlayerForNewGame(p));
-                 console.log("Reset players:", resetPlayers); // DEBUG
-
-                const roomRef = doc(db, getRoomPath());
+            if (localGameData && !isSpectator) {
                 try {
-                     const resetPayload = {
-                        players: resetPlayers,
-                        gameState: "waiting", // Back to waiting room
-                        currentPlayerIndex: 0,
-                        winner: null,
-                        lastMove: null,
-                        gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} started a new game!` }) 
-                     };
-                     console.log("Updating Firestore with reset data:", resetPayload); // DEBUG
-                    await updateDoc(roomRef, resetPayload);
-                     console.log("Game reset successful."); // DEBUG
+                    const roomRef = doc(db, getRoomPath());
+                    const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
+                    const myPlayer = localGameData.players[myPlayerIndex];
+                    
+                    if (!myPlayer) {
+                        // Player not in list, just exit
+                        showLoginScreen();
+                        return;
+                    }
+
+                    let newPlayers;
+                    let logMessage = { type: 'game', message: `${myPlayer.name} has left the game.` };
+                    let updateData = {};
+
+                    if (localGameData.gameState === 'waiting') {
+                        // In waiting room, just remove player
+                        newPlayers = localGameData.players.filter(p => p.userId !== userId);
+                        updateData = { players: newPlayers, gameLog: arrayUnion(logMessage) };
+                    } else {
+                        // In game, mark as 'out' and check for game over
+                        newPlayers = localGameData.players.map(p => 
+                            p.userId === userId ? { ...p, isOut: true, shipsLeft: 0 } : p
+                        );
+                        
+                        const playersStillIn = newPlayers.filter(p => !p.isOut);
+                        let newGameState = localGameData.gameState;
+                        let newWinner = localGameData.winner;
+                        let nextPlayerIndex = localGameData.currentPlayerIndex;
+
+                        if (playersStillIn.length === 1) {
+                            // This exit caused a win
+                            newGameState = "over";
+                            newWinner = playersStillIn[0].userId;
+                            logMessage.message += ` ${playersStillIn[0].name} is the winner!`;
+                        } else if (playersStillIn.length === 0) {
+                            // This exit caused a draw
+                            newGameState = "over";
+                            logMessage.message += ` It's a draw!`;
+                        } else if (localGameData.currentPlayerIndex === myPlayerIndex) {
+                            // It was my turn, advance to next non-out player
+                            do {
+                                nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
+                            } while (newPlayers[nextPlayerIndex].isOut);
+                        }
+
+                        updateData = {
+                            players: newPlayers,
+                            gameState: newGameState,
+                            winner: newWinner,
+                            currentPlayerIndex: nextPlayerIndex,
+                            gameLog: arrayUnion(logMessage)
+                        };
+                    }
+                    
+                    await updateDoc(roomRef, updateData);
+
                 } catch (err) {
-                    console.error("Error resetting game:", err);
-                    showMessage("Error starting a new game. Please try again.");
+                    console.error("Error updating doc on exit:", err);
                 }
-            } else {
-                 console.log("Non-host clicked Play Again. Waiting for host."); // DEBUG
-                // Non-hosts just wait for the snapshot update
-                showMessage("Waiting for the host to start a new game...");
             }
+            
+            // Always go to login screen after attempting update
+            showLoginScreen();
         }
 
 
         // --- Screen Management ---
         
         function showLoginScreen() {
-             console.log("Showing Login Screen"); // DEBUG
             loadingScreen.classList.add('hidden');
             gameScreen.classList.add('hidden');
             loginScreen.classList.remove('hidden');
-            exitRoomButton.classList.add('hidden');
+            exitRoomButton.classList.add('hidden'); // NEW
             
+            // NEW: Clear saved session
             localStorage.removeItem('savedRoomCode');
             localStorage.removeItem('savedPlayerName');
             
             if (unsubscribeRoom) {
-                 console.log("Unsubscribing room listener in showLoginScreen"); // DEBUG
                 unsubscribeRoom();
                 unsubscribeRoom = null;
             }
-            // REMOVED presence interval clear (no longer exists)
             
             localGameData = null;
-            oldLocalGameData = null;
-            currentRoomCode = null; // Clear room code
-            isSpectator = false;
-            // REMOVED disconnectedPlayers clear (no longer exists)
+            currentRoomCode = null;
+            isSpectator = false; // Reset spectator flag
+            isExiting = false; // Reset exit flag
             cancelMove(); 
             hasMovedShipThisTurn = false; 
             
@@ -2101,115 +1768,80 @@
         }
         
         function showGameScreen() {
-             console.log("Showing Game Screen"); // DEBUG
             loadingScreen.classList.add('hidden');
             loginScreen.classList.add('hidden');
             gameScreen.classList.remove('hidden');
-            exitRoomButton.classList.remove('hidden');
+            exitRoomButton.classList.remove('hidden'); // NEW
         }
 
         // --- Firebase Initialization ---
 
         async function signIn() {
             try {
-                await signInAnonymously(auth);
+                // NEW: Use custom token if available (Canvas environment)
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    // Fallback to anonymous sign-in for local testing
+                    await signInAnonymously(auth);
+                }
             } catch (error) {
                 console.error("Firebase Sign-In Error:", error);
                 loadingScreen.innerHTML = "<h1>Auth Error</h1><p>Could not sign in. Check console and Firebase settings.</p>";
             }
         }
         
-         // REMOVED startPresenceUpdates function
-
         /**
          * Main room listener. Handles game state.
          */
         function listenToRoom() {
-             console.log("Setting up listener for room:", currentRoomCode); // DEBUG
             if (unsubscribeRoom) {
-                 console.log("Unsubscribing from previous listener."); // DEBUG
                 unsubscribeRoom();
             }
             
-            const roomPath = getRoomPath();
-             if (!roomPath) { // Safety check if room code is lost
-                 console.error("listenToRoom called with no currentRoomCode."); // DEBUG
-                showLoginScreen();
-                return;
-            }
-            const roomRef = doc(db, roomPath);
-
+            const roomRef = doc(db, getRoomPath());
             unsubscribeRoom = onSnapshot(roomRef, (doc) => {
-                 console.log("Snapshot received for room:", currentRoomCode); // DEBUG
                 if (doc.exists()) {
-                    oldLocalGameData = localGameData; // Save previous state
+                    const oldLocalGameData = localGameData;
                     localGameData = doc.data();
-                     console.log("New localGameData:", localGameData); // DEBUG
                     
-                    // REMOVED Disconnect Check Logic
-
-                    // --- Continue with normal state processing ---
+                    // Don't reset move state if I am still the current player
                     if (!isSpectator) {
                         const myPlayer = localGameData.players.find(p => p.userId === userId);
+                        // NEW: Check if I was kicked
                         if (!myPlayer) {
-                             console.log("Player not found in snapshot, showing login."); // DEBUG
-                            showMessage("You were removed from the room.");
-                            showLoginScreen();
+                            showMessage("You were kicked from the room.");
+                            handleExitRoom(); // Use clean exit
                             return;
                         }
                         
-                        // Check if player is marked as out *by the game data*
-                        if (myPlayer.isOut) {
-                             console.log("Player is marked as 'out', showing login."); // DEBUG
-                            showMessage("You have been eliminated or removed from the game.");
-                            showLoginScreen();
-                            return;
-                        }
+                        const oldPlayerIndex = oldLocalGameData ? oldLocalGameData.currentPlayerIndex : -1;
+                        const newPlayerIndex = localGameData.currentPlayerIndex;
+                        const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
                         
-                        if (oldLocalGameData) {
-                             // Ensure index is valid before checking
-                             if(oldLocalGameData.players && oldLocalGameData.currentPlayerIndex >= 0 && oldLocalGameData.currentPlayerIndex < oldLocalGameData.players.length) {
-                                const oldPlayerIndex = oldLocalGameData.currentPlayerIndex;
-                                const newPlayerIndex = localGameData.currentPlayerIndex;
-                                const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
-                                
-                                if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
-                                    hasMovedShipThisTurn = false;
-                                    cancelMove(); 
-                                }
-                            }
+                        if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
+                            hasMovedShipThisTurn = false;
+                            cancelMove(); 
                         }
                     }
 
                     opponentGridsContainer.style.pointerEvents = 'auto';
                     myGridContainer.style.pointerEvents = 'auto';
                     
-                     console.log("Calling renderGameUI from listener."); // DEBUG
-                    renderGameUI(localGameData); // Render based on potentially updated disconnect status
+                    renderGameUI(localGameData);
 
                     if (!isSpectator && localGameData.gameState === 'playing') {
-                        // Ensure currentPlayerIndex is valid
-                         if (localGameData.players && localGameData.currentPlayerIndex >= 0 && localGameData.currentPlayerIndex < localGameData.players.length) {
-                            const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
-                             // Check if currentPlayer exists before accessing properties
-                            if (currentPlayer) { 
-                                const isMyTurn = currentPlayer.userId === userId;
-                                if (isMyTurn) {
-                                    if(currentPlayer.isSkippingTurn) {
-                                        opponentGridsContainer.style.pointerEvents = 'none';
-                                        myGridContainer.style.pointerEvents = 'none';
-                                    } else if (shipToMoveIndex !== null) {
-                                        opponentGridsContainer.style.pointerEvents = 'none';
-                                    }
-                                }
-                            } else {
-                                 console.warn("Current player is undefined despite valid index:", localGameData.currentPlayerIndex);
+                        const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
+                        const isMyTurn = currentPlayer.userId === userId;
+                        if (isMyTurn) {
+                            if(currentPlayer.isSkippingTurn) {
+                                opponentGridsContainer.style.pointerEvents = 'none';
+                                myGridContainer.style.pointerEvents = 'none';
+                            } else if (shipToMoveIndex !== null) {
+                                opponentGridsContainer.style.pointerEvents = 'none';
                             }
-                        } else {
-                             console.warn("Current player index out of bounds in 'playing' state:", localGameData.currentPlayerIndex);
                         }
                     }
-
 
                     if (oldLocalGameData?.gameState !== 'over' && localGameData.gameState === 'over') {
                         setTimeout(() => {
@@ -2217,7 +1849,6 @@
                         }, 1000);
                     }
                 } else {
-                     console.log("Document does not exist, showing login."); // DEBUG
                     showMessage("The game room no longer exists.");
                     showLoginScreen();
                 }
@@ -2230,8 +1861,8 @@
         
         window.onload = () => {
             if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-                 loadingScreen.innerHTML = "<h1>Error</h1><p>Firebase is not configured. Please paste your `firebaseConfig` object into the script.</p>";
-                return;
+                 loadingScreen.innerHTML = "<h1>Error</h1><p>Firebase is not configured. Please provide __firebase_config.</p>";
+                 return;
             }
             
             try {
@@ -2245,12 +1876,16 @@
                         userId = user.uid;
                         console.log("Authenticated with userId:", userId);
                         
+                        // NEW: Reload logic
                         const savedRoomCode = localStorage.getItem('savedRoomCode');
                         const savedPlayerName = localStorage.getItem('savedPlayerName');
                         
                         if (savedRoomCode && savedPlayerName) {
                             console.log(`Found saved session: ${savedPlayerName} in ${savedRoomCode}`);
-                            handleJoinRoom(true); // Attempt to rejoin
+                            myPlayerName = savedPlayerName;
+                            currentRoomCode = savedRoomCode;
+                            showGameScreen();
+                            listenToRoom(); // This will auto-handle spectator vs. player vs. kicked
                         } else {
                             showLoginScreen(); 
                         }
@@ -2263,22 +1898,18 @@
 
                 // --- Bind Event Listeners ---
                 createRoomButton.addEventListener('click', handleCreateRoom);
-                joinButton.addEventListener('click', () => handleJoinRoom(false));
+                joinButton.addEventListener('click', handleJoinRoom);
                 startGameButton.addEventListener('click', handleStartGame);
-                exitRoomButton.addEventListener('click', (e) => handleKickOrExit(e, 'exit'));
+                exitRoomButton.addEventListener('click', handleExitRoom); // NEW
+                window.addEventListener('beforeunload', () => handleExitRoom()); // NEW: For browser close
                 
                 myGridContainer.addEventListener('click', handleGridClick);
-                 // FIX: Correctly bind kick listener to opponent grids container
-                opponentGridsContainer.addEventListener('click', handleGridClick); 
+                opponentGridsContainer.addEventListener('click', handleGridClick);
                 
                 readyButton.addEventListener('click', handleReadyClick);
                 
                 roomColorPicker.addEventListener('click', handleColorSelectInRoom); 
-                playerListContainer.addEventListener('click', (e) => { // Handles waiting room kick
-                    if (e.target.classList.contains('kick-button')) {
-                        handleKickOrExit(e, 'kick');
-                    }
-                });
+                playerListContainer.addEventListener('click', handleKickPlayer); // NEW
                 
                 chatSendButton.addEventListener('click', handleSendChat);
                 chatInput.addEventListener('keyup', (e) => {
@@ -2291,8 +1922,9 @@
                     messageModal.classList.add('hidden');
                 });
                 
-                // NEW: Bind playAgainButton listener
-                playAgainButton.addEventListener('click', handlePlayAgain); 
+                playAgainButton.addEventListener('click', () => {
+                    handleExitRoom(); // NEW: Go to login screen instead of reload
+                });
 
                 roomInput.addEventListener('keyup', (e) => {
                     if (e.key === 'Enter') joinButton.click();
@@ -2307,4 +1939,3 @@
     </script>
 </body>
 </html>
-
