@@ -191,27 +191,7 @@
             }
         }
         
-        /* NEW: Disconnected player overlay/style */
-        .player-disconnected .grid-wrapper,
-        .player-disconnected h3,
-        .player-disconnected p {
-            opacity: 0.5;
-            pointer-events: none; /* Prevent interaction with disconnected grids */
-        }
-        .player-disconnected-label {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-15deg);
-            background-color: rgba(239, 68, 68, 0.8); /* red-500 with opacity */
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            z-index: 5;
-            pointer-events: none;
-        }
+        /* REMOVED Disconnected player styles */
 
 
         /* Modal backdrop */
@@ -497,7 +477,7 @@
             arrayUnion, 
             serverTimestamp,
             setLogLevel,
-            Timestamp // NEW: Import Timestamp
+            Timestamp 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Game Constants ---
@@ -505,9 +485,7 @@
         const SHIP_COUNT = 5;
         const MINE_COUNT = 3;
         const MAX_PLAYERS = 20;
-        const PRESENCE_UPDATE_INTERVAL = 20000; // Update lastSeen every 20 seconds
-        const DISCONNECT_TIMEOUT = 45000;      // Consider disconnected after 45 seconds
-        const KICK_TIMEOUT = 30000;            // Allow kicking after 30 seconds disconnected
+        // REMOVED Presence Constants
 
         // --- Global Variables ---
         let app, db, auth;
@@ -516,8 +494,8 @@
         let oldLocalGameData = null; // Store previous state
         let unsubscribeRoom = null;
         let isSpectator = false;
-        let presenceIntervalId = null; // NEW: Interval timer for presence
-        let disconnectedPlayers = {}; // NEW: Track players marked as disconnected { userId: timestamp }
+        // REMOVED presenceIntervalId
+        // REMOVED disconnectedPlayers
         
         // State for click-to-move
         let shipToMoveIndex = null;  // Index of the ship being moved
@@ -676,7 +654,7 @@
          * @returns {object} - The player object.
          */
         function createNewPlayer() {
-            // FIX: Removed serverTimestamp() from here
+            // REMOVED lastSeen from initial object
             return {
                 userId: userId,
                 name: myPlayerName,
@@ -688,7 +666,6 @@
                 isOut: false,
                 ready: false,
                 isSkippingTurn: false,
-                // lastSeen will be added in a separate update
             };
         }
 
@@ -704,22 +681,13 @@
             let cellsHTML = '';
             const playerColor = player.color || DEFAULT_COLOR;
             const isCreator = localGameData.creatorId === userId;
-            const isDisconnected = disconnectedPlayers[player.userId]; // Check disconnect status
-            const canKickDisconnected = isDisconnected && (Date.now() - disconnectedPlayers[player.userId] > KICK_TIMEOUT);
-
-            // Add disconnected style if needed
-            if (isDisconnected && !isMe) {
-                 gridClasses += ' player-disconnected';
-            }
             
-            // Allow kicking if host OR if player is disconnected for long enough
-            const kickButtonHTML = ((isCreator || canKickDisconnected) && !isMe)
+            // SIMPLIFIED: Only host can kick now
+            const kickButtonHTML = (isCreator && !isMe)
                 ? `<button data-kick-id="${player.userId}" class="kick-button-ingame">Kick</button>`
                 : '';
                 
-            const disconnectedLabelHTML = (isDisconnected && !isMe)
-                ? `<div class="player-disconnected-label">Disconnected</div>`
-                : '';
+            // REMOVED disconnectedLabelHTML
             
             // Add column headers
             cellsHTML += '<div class="grid-label"></div>'; // Empty corner
@@ -798,8 +766,7 @@
 
             return `
                 <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'} relative">
-                    ${disconnectedLabelHTML}
-                    ${kickButtonHTML}
+                    ${kickButtonHTML} 
                     <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name}</h3>
                     <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
                     ${player.isSkippingTurn ? '<p class="text-center text-xs sm:text-sm text-red-500 font-bold mb-2">SKIPPING TURN</p>' : ''}
@@ -961,16 +928,14 @@
                     const isCreator = localGameData.creatorId === userId;
                     
                     roomData.players.forEach(player => {
-                        const isDisconnected = disconnectedPlayers[player.userId]; // Check disconnect status
-                        const canKickDisconnected = isDisconnected && (Date.now() - disconnectedPlayers[player.userId] > KICK_TIMEOUT);
-
-                        const kickButtonHTML = ((isCreator || canKickDisconnected) && player.userId !== userId)
+                        // SIMPLIFIED Kick Button Logic (Host only)
+                        const kickButtonHTML = (isCreator && player.userId !== userId)
                             ? `<button data-kick-id="${player.userId}" class="kick-button">Kick</button>`
                             : '';
                             
                         const playerCard = `
-                            <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center flex justify-between items-center ${isDisconnected ? 'opacity-50' : ''}">
-                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name} ${isDisconnected ? '(Disconnected)' : ''}</h3>
+                            <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center flex justify-between items-center">
+                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name}</h3>
                                 <div>
                                     ${player.color ? '' : '<span class="text-xs text-red-500">Choosing color...</span>'}
                                     ${kickButtonHTML}
@@ -1108,11 +1073,7 @@
                          opponentGridsContainer.innerHTML += createGridHTML(player, false, false);
                     });
                     
-                    // Stop presence updates on game over
-                    if (presenceIntervalId) {
-                         clearInterval(presenceIntervalId);
-                         presenceIntervalId = null;
-                    }
+                    // REMOVED Stop presence updates (no longer needed here)
                      // DEBUG: Ensure opponent container is visible
                      opponentGridsContainer.classList.remove('hidden');
                     break;
@@ -1200,20 +1161,16 @@
                  console.log("Setting initial room data:", newRoomData); // DEBUG
                 await setDoc(roomRef, newRoomData);
 
-                 console.log("Room created, updating timestamp for creator."); // DEBUG
-                // Now, set the timestamp for the creator
-                await updateDoc(roomRef, {
-                    'players.0.lastSeen': serverTimestamp() 
-                });
+                 // REMOVED separate timestamp update for creator (no longer needed)
                 
                 localStorage.setItem('savedRoomCode', currentRoomCode);
                 localStorage.setItem('savedPlayerName', myPlayerName);
                 
                 isSpectator = false;
                 showGameScreen();
-                 console.log("Game screen shown, setting up listener and presence."); // DEBUG
+                 console.log("Game screen shown, setting up listener."); // DEBUG
                 listenToRoom();
-                startPresenceUpdates(); // NEW: Start updating presence
+                // REMOVED startPresenceUpdates call
 
             } catch (err) {
                 console.error("Error creating room:", err);
@@ -1281,11 +1238,11 @@
                         }
                         throw new Error("You were removed from this game. You cannot rejoin.");
                     }
-                    // Not out, update name and lastSeen
+                    // Not out, update name 
                     const playerIndex = roomData.players.findIndex(p => p.userId === userId);
                     await updateDoc(roomRef, {
                          [`players.${playerIndex}.name`]: myPlayerName,
-                         [`players.${playerIndex}.lastSeen`]: serverTimestamp()
+                         // REMOVED lastSeen update
                     });
                     isSpectator = false;
                 } else {
@@ -1295,23 +1252,12 @@
                             throw new Error(`Room is full (max ${MAX_PLAYERS} players).`);
                         }
                         const newPlayer = createNewPlayer(); // Without lastSeen
-                        // Add player first
+                        // Add player
                         await updateDoc(roomRef, {
                             players: arrayUnion(newPlayer),
                             gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined the room.` })
                         });
-                        // Then immediately update their timestamp
-                        // Need to fetch again briefly to get the index, or derive it carefully
-                        const updatedSnap = await getDoc(roomRef);
-                        const updatedData = updatedSnap.data();
-                        const playerIndex = updatedData.players.findIndex(p => p.userId === userId);
-                        if (playerIndex !== -1) {
-                            await updateDoc(roomRef, {
-                                [`players.${playerIndex}.lastSeen`]: serverTimestamp()
-                            });
-                        } else {
-                            console.error("Could not find newly added player to set timestamp.");
-                        }
+                        // REMOVED separate timestamp update
 
                         isSpectator = false;
                     } else {
@@ -1332,9 +1278,9 @@
                 }
                 
                 showGameScreen();
-                 console.log("Game screen shown (join), setting up listener and presence."); // DEBUG
+                 console.log("Game screen shown (join), setting up listener."); // DEBUG
                 listenToRoom();
-                if (!isSpectator) startPresenceUpdates(); // NEW: Start presence if not spectator
+                // REMOVED startPresenceUpdates call
                 
             } catch (err) {
                 console.error("Error joining room:", err);
@@ -1848,16 +1794,13 @@
             
             if (exitType === 'kick') {
                 kickId = e.target.dataset.kickId;
-                if (!kickId || !localGameData) return; // Allow anyone to kick disconnected, host check later
+                if (!kickId || !localGameData) return; 
 
-                 const targetPlayer = localGameData.players.find(p => p.userId === kickId);
-                 const isCreator = localGameData.creatorId === userId;
-                 const isDisconnected = disconnectedPlayers[kickId];
-                 const canKickDisconnected = isDisconnected && (Date.now() - disconnectedPlayers[kickId] > KICK_TIMEOUT);
-
-                 // Only allow kick if host OR target is disconnected long enough
-                 if (!isCreator && !canKickDisconnected) {
-                     showMessage("Only the host can kick active players.");
+                const isCreator = localGameData.creatorId === userId;
+                
+                 // SIMPLIFIED: Only allow kick if host
+                 if (!isCreator) {
+                     showMessage("Only the host can kick players.");
                      return;
                  }
 
@@ -1944,16 +1887,13 @@
                 unsubscribeRoom();
                 unsubscribeRoom = null;
             }
-            if (presenceIntervalId) { // NEW: Clear presence interval
-                clearInterval(presenceIntervalId);
-                presenceIntervalId = null;
-            }
+            // REMOVED presence interval clear (no longer exists)
             
             localGameData = null;
             oldLocalGameData = null;
             currentRoomCode = null;
             isSpectator = false;
-            disconnectedPlayers = {}; // NEW: Clear disconnect tracker
+            // REMOVED disconnectedPlayers clear (no longer exists)
             cancelMove(); 
             hasMovedShipThisTurn = false; 
             
@@ -1981,41 +1921,7 @@
             }
         }
         
-         /**
-         * NEW: Starts periodically updating the player's lastSeen timestamp.
-         */
-        function startPresenceUpdates() {
-            if (presenceIntervalId) clearInterval(presenceIntervalId); // Clear existing timer
-            
-            const updatePresence = async () => {
-                const roomPath = getRoomPath();
-                if (!roomPath || !localGameData) return; // Don't update if not in a room
-
-                const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
-                if (myPlayerIndex === -1 || localGameData.players[myPlayerIndex].isOut) {
-                    // Player not found or is out, stop updates
-                    if (presenceIntervalId) clearInterval(presenceIntervalId);
-                    return;
-                }
-
-                const roomRef = doc(db, roomPath);
-                try {
-                     // Use a specific field update to avoid overwriting other player data
-                    await updateDoc(roomRef, {
-                        [`players.${myPlayerIndex}.lastSeen`]: serverTimestamp()
-                    });
-                     console.log("Presence updated");
-                } catch (err) {
-                    console.error("Error updating presence:", err);
-                    // Consider stopping updates if there's a persistent error
-                }
-            };
-
-            // Update immediately first time
-            updatePresence(); 
-            // Then update periodically
-            presenceIntervalId = setInterval(updatePresence, PRESENCE_UPDATE_INTERVAL);
-        }
+         // REMOVED startPresenceUpdates function
 
         /**
          * Main room listener. Handles game state.
@@ -2042,56 +1948,7 @@
                     localGameData = doc.data();
                      console.log("New localGameData:", localGameData); // DEBUG
                     
-                    let shouldAddDisconnectLog = []; // Track who needs a log message THIS snapshot
-
-                    // --- Disconnect Check ---
-                    if (localGameData.players) {
-                        const now = Date.now();
-                        localGameData.players.forEach(player => {
-                            if (player.userId === userId || player.isOut) {
-                                // Ignore self or players already out
-                                if (disconnectedPlayers[player.userId]) {
-                                    delete disconnectedPlayers[player.userId]; // Clear if they rejoined or are out
-                                }
-                                return; 
-                            }
-
-                            if (player.lastSeen instanceof Timestamp) {
-                                const lastSeenTime = player.lastSeen.toDate().getTime();
-                                if (now - lastSeenTime > DISCONNECT_TIMEOUT) {
-                                    // Player is disconnected
-                                    if (!disconnectedPlayers[player.userId]) {
-                                        // First time seeing disconnect for this player
-                                        disconnectedPlayers[player.userId] = now; // Store time detected
-                                        shouldAddDisconnectLog.push(player.name);
-                                        console.log(`${player.name} detected as disconnected.`);
-                                    }
-                                } else {
-                                    // Player is connected or reconnected
-                                    if (disconnectedPlayers[player.userId]) {
-                                        delete disconnectedPlayers[player.userId];
-                                        console.log(`${player.name} reconnected.`);
-                                         // Optionally add a reconnect message to log here
-                                    }
-                                }
-                            } else {
-                                // lastSeen is not a timestamp yet (might be serverTimestamp placeholder)
-                                // Or player object is malformed
-                                console.warn("Player missing valid lastSeen:", player.name);
-                            }
-                        });
-                    }
-                    
-                    // Add disconnect messages if needed (do this outside the loop)
-                    if (shouldAddDisconnectLog.length > 0) {
-                        const logMessages = shouldAddDisconnectLog.map(name => ({
-                            type: 'game', message: `${name} appears to have disconnected.`
-                        }));
-                        // Update log in Firestore (don't await, let snapshot handle UI)
-                        updateDoc(roomRef, { gameLog: arrayUnion(...logMessages) })
-                            .catch(err => console.error("Error adding disconnect log:", err));
-                    }
-
+                    // REMOVED Disconnect Check Logic
 
                     // --- Continue with normal state processing ---
                     if (!isSpectator) {
