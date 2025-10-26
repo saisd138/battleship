@@ -6,7 +6,7 @@
     <title>Battleship Royale</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- NEW: Load PeerJS Library -->
+    <!-- Load PeerJS Library -->
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         /* Custom game-specific styles */
@@ -88,7 +88,7 @@
             border-color: #374151; /* gray-700 */
         }
         
-        /* NEW: My grid: placed mine */
+        /* My grid: placed mine */
         .my-grid .grid-cell.mine {
             background-color: #cce7ff; /* light-blue-100 */
             border-color: #a3d5ff;
@@ -123,7 +123,7 @@
             color: #1f2937; /* gray-800 */
         }
         
-        /* NEW: All grids: mine hit */
+        /* All grids: mine hit */
         .grid-cell.mine-hit {
             /* Background-color is set by JS */
             border-color: #ef4444; /* red-500 */
@@ -145,7 +145,7 @@
             box-shadow: 0 0 10px #fde047;
         }
 
-        /* NEW: Style for valid move options */
+        /* Style for valid move options */
         .grid-cell.move-option {
             background-color: #cce7ff;
             border: 2px dashed #facc15; /* yellow-400 */
@@ -224,14 +224,14 @@
             transform: rotate(-45deg);
         }
 
-        /* NEW: Game event log messages */
+        /* Game event log messages */
         .log-game-event {
             color: #DC2626; /* red-600 */
             font-style: italic;
             font-size: 0.875rem; /* text-sm */
         }
         
-        /* NEW: Chat messages */
+        /* Chat messages */
         .log-chat-message {
             font-size: 0.875rem; /* text-sm */
             word-break: break-word; /* Ensure long messages wrap */
@@ -380,8 +380,8 @@
                 </div>
 
                 <!-- Start Button -->
-                <div class="border-t border-gray-200 pt-6 mt-6">
-                    <button id="start-game-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
+                <div id="start-game-controls-container" class="border-t border-gray-200 pt-6 mt-6">
+                    <button id="start-game-button" class="hidden bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-md shadow-lg text-xl transition duration-200">
                         Start Game
                     </button>
                     <p class="text-gray-600 text-sm mt-4">Don't forget to join the <b class="text-green-600">Voice Chat</b>! (Button is in the header)</p>
@@ -391,7 +391,7 @@
         </div>
     </div>
 
-    <!-- NEW: Container for hidden audio elements -->
+    <!-- Container for hidden audio elements -->
     <div id="audio-streams" class="hidden"></div>
 
     <!-- Generic Message Modal -->
@@ -424,7 +424,8 @@
         import { 
             getAuth, 
             signInAnonymously, 
-            onAuthStateChanged 
+            onAuthStateChanged,
+            signInWithCustomToken // Import this
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, 
@@ -441,7 +442,7 @@
         // --- Game Constants ---
         const GRID_SIZE = 6;
         const SHIP_COUNT = 5;
-        const MINE_COUNT = 3; // NEW
+        const MINE_COUNT = 3; 
         const MAX_PLAYERS = 20;
 
         // --- Global Variables ---
@@ -451,7 +452,7 @@
         let unsubscribeRoom = null;
         let isSpectator = false;
         
-        // --- NEW: PeerJS Voice Chat Globals ---
+        // --- PeerJS Voice Chat Globals ---
         let peer = null;
         let localStream = null;
         let voiceConnections = {}; // { otherPlayerId: Peer.MediaConnection }
@@ -459,8 +460,8 @@
         let isMuted = false;
         
         // State for click-to-move
-        let shipToMoveIndex = null;  // Index of the ship being moved
-        let validMoveIndices = [];   // Array of valid destination indices
+        let shipToMoveIndex = null;   // Index of the ship being moved
+        let validMoveIndices = [];    // Array of valid destination indices
         let hasMovedShipThisTurn = false; // Local flag for ship movement
 
         // Darker Pastel colors
@@ -486,17 +487,21 @@
         const DEFAULT_COLOR = '#6b7280'; // Gray
 
         // --- Firebase Configuration ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyBaNyxRMOTb7a-NYu7Y1J1Q4pSweC-qZUQ",
-            authDomain: "battleship-royal.firebaseapp.com",
-            projectId: "battleship-royal",
-            storageBucket: "battleship-royal.firebasestorage.app",
-            messagingSenderId: "246405120799",
-            appId: "1:246405120799:web:1ac4da9d7c951dfa96262a"
-        };
-        
-        // This is a unique ID for your app's data in the database.
-        const appId = 'battleship-royale-local'; 
+        // Use provided config or fallback for local dev
+        const firebaseConfig = typeof __firebase_config !== 'undefined'
+            ? JSON.parse(__firebase_config)
+            : {
+                // FALLBACK CONFIG for local testing (replace with your own)
+                apiKey: "AIzaSyBaNyxRMOTb7a-NYu7Y1J1Q4pSweC-qZUQ",
+                authDomain: "battleship-royal.firebaseapp.com",
+                projectId: "battleship-royal",
+                storageBucket: "battleship-royal.firebasestorage.app",
+                messagingSenderId: "246405120799",
+                appId: "1:246405120799:web:1ac4da9d7c951dfa96262a"
+            };
+
+        // Use provided app ID or fallback
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'battleship-royale-local-dev'; 
 
         // --- DOM Elements ---
         const loadingScreen = document.getElementById('loading-screen');
@@ -518,7 +523,7 @@
         const setupControls = document.getElementById('setup-controls');
         const setupInstructions = document.getElementById('setup-instructions');
         const shipsPlacedCount = document.getElementById('ships-placed-count');
-        const minesPlacedCount = document.getElementById('mines-placed-count'); // NEW
+        const minesPlacedCount = document.getElementById('mines-placed-count'); 
         const readyButton = document.getElementById('ready-button');
         
         const myGridContainer = document.getElementById('my-grid-container');
@@ -534,6 +539,7 @@
         const roomColorPicker = document.getElementById('room-color-picker'); 
         const startGameButton = document.getElementById('start-game-button');
         const startGameError = document.getElementById('start-game-error');
+        const startGameControlsContainer = document.getElementById('start-game-controls-container');
         
         const messageModal = document.getElementById('message-modal');
         const messageText = document.getElementById('message-text');
@@ -574,19 +580,20 @@
          * @returns {string} - The document path.
          */
         function getRoomPath() {
+            // All data is stored in a single "public" collection for this app
             return `artifacts/${appId}/public/data/battleship_rooms/${currentRoomCode}`;
         }
         
         /**
-         * NEW: Creates a unique PeerJS ID based on room and user.
+         * Creates a unique PeerJS ID based on room and user.
          * This prevents collisions if the same user joins multiple rooms.
          * @param {string} roomId - The current room code.
-         *@param {string} usrId - The current user ID.
+         * @param {string} usrId - The current user ID.
          * @returns {string} - A unique ID for PeerJS.
          */
         function getPeerId(roomId, usrId) {
             // PeerJS IDs must be alphanumeric + dashes/underscores
-            const safeUserId = usrId.replace(/[^a-zA-Z0-9]/g, '');
+            const safeUserId = usrId.replace(/[^a-zA-Z0-9-]/g, ''); // Allow dashes
             return `battleship-${roomId}-${safeUserId}`.slice(0, 100); // Keep ID reasonable
         }
 
@@ -629,18 +636,27 @@
          * @returns {object} - The player object.
          */
         function createNewPlayer() {
+            // NEW: Create grid as an object
+            const grid = {};
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const coord = toGridCoord(toIndex(r,c));
+                    grid[coord] = 0; // 0 = empty
+                }
+            }
+
             return {
                 userId: userId,
                 name: myPlayerName,
                 color: null, // Color set after joining
-                grid: Array(GRID_SIZE * GRID_SIZE).fill(0),
+                grid: grid, // NEW: Grid is an object
                 shipsPlaced: 0,
-                minesPlaced: 0, // NEW
+                minesPlaced: 0, 
                 shipsLeft: SHIP_COUNT, 
                 isOut: false,
                 ready: false,
-                peerId: null, // NEW: Will store their PeerJS ID
-                isSkippingTurn: false // NEW: For mine penalty
+                peerId: null, // Will store their PeerJS ID
+                isSkippingTurn: false // For mine penalty
             };
         }
 
@@ -668,7 +684,8 @@
                 cellsHTML += `<div class="grid-label">${rowLabels[r]}</div>`; // Row header
                 for (let c = 0; c < GRID_SIZE; c++) {
                     const i = toIndex(r, c);
-                    const cellState = player.grid[i];
+                    const coord = toGridCoord(i); // NEW: Get coord
+                    const cellState = player.grid[coord]; // CHANGED: Read from grid object
                     let cellClass = 'grid-cell';
                     let content = '';
                     let style = '';
@@ -676,7 +693,7 @@
                     if (isMe) {
                         // My Grid: Show everything
                         if (cellState === 1) cellClass += ' ship';
-                        if (cellState === 2) { // NEW: Show my mine
+                        if (cellState === 2) { 
                             cellClass += ' mine';
                             content = '💣';
                         }
@@ -690,7 +707,7 @@
                                 cellClass += ' hit';
                                 content = '🚢';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
-                            } else if (cellState.type === 'mine-hit') { // NEW: Mine hit
+                            } else if (cellState.type === 'mine-hit') { 
                                 cellClass += ' mine-hit';
                                 content = '💥';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
@@ -715,7 +732,7 @@
                                 cellClass += ' hit';
                                 content = '🚢';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
-                            } else if (cellState.type === 'mine-hit') { // NEW: Mine hit
+                            } else if (cellState.type === 'mine-hit') { 
                                 cellClass += ' mine-hit';
                                 content = '💥';
                                 style = `background-color: ${cellState.attackerColor || DEFAULT_COLOR};`;
@@ -723,7 +740,8 @@
                         }
                     }
                     
-                    cellsHTML += `<div class="${cellClass}" data-player-id="${player.userId}" data-row="${r}" data-col="${c}" style="${style}">${content}</div>`;
+                    // CHANGED: Use data-index and data-coord
+                    cellsHTML += `<div class="${cellClass}" data-player-id="${player.userId}" data-index="${i}" data-coord="${coord}" style="${style}">${content}</div>`;
                 }
             }
 
@@ -791,17 +809,22 @@
             
             const myPlayer = roomData.players.find(p => p.userId === userId);
 
-            // NEW: Spectator check
+            // Spectator check (joined mid-game)
             if (!myPlayer && !isSpectator) {
-                // Kicked or data mismatch, return to login
-                showMessage("An error occurred. Returning to login screen.");
-                showLoginScreen();
+                // This can happen on a bad data refresh
+                console.warn("My player data not found, but not a spectator. Re-checking auth.");
                 return;
             }
+
+            // NEW: Check if I am an eliminated player
+            const isEliminated = myPlayer && myPlayer.isOut;
             
             // Update header
             roomDisplay.textContent = currentRoomCode;
-            myNameDisplay.textContent = myPlayerName + (isSpectator ? " (Spectator)" : "");
+            let nameSuffix = "";
+            if (isSpectator) nameSuffix = " (Spectator)";
+            if (isEliminated) nameSuffix = " (Eliminated)";
+            myNameDisplay.textContent = myPlayerName + nameSuffix;
             
             // Clear main containers
             myGridContainer.innerHTML = ''; // Will be re-filled
@@ -836,7 +859,7 @@
                 gameLogContainer.appendChild(p);
             });
             
-            // --- NEW: Spectator UI ---
+            // --- Spectator UI (Joined mid-game) ---
             if (isSpectator) {
                 gameStatus.textContent = "Spectating Game in Progress";
                 if (roomData.gameState === 'over') {
@@ -868,7 +891,7 @@
                 return; // End render function for spectators
             }
 
-            // --- Player UI (existing logic) ---
+            // --- Player UI (Not a mid-game spectator) ---
             switch (roomData.gameState) {
                 case "waiting":
                     gameStatus.textContent = "Waiting for Players... (Share Code!)";
@@ -886,14 +909,28 @@
                     
                     chatControls.classList.remove('hidden'); // Show chat for players
                     renderColorPicker(roomData);
+
+                    // NEW: Host-only Start Button
+                    if (roomData.creatorId === userId) {
+                        startGameButton.classList.remove('hidden');
+                        document.getElementById('start-game-host-wait-msg')?.remove();
+                    } else {
+                        startGameButton.classList.add('hidden');
+                        if (!document.getElementById('start-game-host-wait-msg')) {
+                            const waitMsg = document.createElement('p');
+                            waitMsg.id = 'start-game-host-wait-msg';
+                            waitMsg.className = 'text-gray-600 text-sm mt-4';
+                            waitMsg.textContent = 'Waiting for the host to start the game...';
+                            startGameControlsContainer.appendChild(waitMsg);
+                        }
+                    }
                     break;
 
                 case "setup":
                     setupControls.classList.remove('hidden');
                     shipsPlacedCount.textContent = myPlayer.shipsPlaced;
-                    minesPlacedCount.textContent = myPlayer.minesPlaced; // NEW
+                    minesPlacedCount.textContent = myPlayer.minesPlaced; 
                     
-                    // NEW: Multi-stage setup instructions
                     if (myPlayer.shipsPlaced < SHIP_COUNT) {
                         gameStatus.textContent = "Place Your Ships!";
                         setupInstructions.textContent = `Place your ${SHIP_COUNT} ships. (Click on grid)`;
@@ -918,8 +955,13 @@
                     const currentPlayer = roomData.players[roomData.currentPlayerIndex];
                     const isMyTurn = currentPlayer.userId === userId;
                     
-                    if (isMyTurn) {
-                        // NEW: Check for skipped turn
+                    // NEW: Check for eliminated player
+                    if (isEliminated) {
+                        gameStatus.textContent = "You are eliminated. Spectating...";
+                        gameStatus.classList.remove('text-yellow-500', 'text-red-500');
+                        if (shipToMoveIndex !== null) cancelMove();
+                    
+                    } else if (isMyTurn) {
                         if (myPlayer.isSkippingTurn) {
                             gameStatus.textContent = "You hit a mine! Skipping your turn...";
                             gameStatus.classList.add('text-red-500');
@@ -936,7 +978,8 @@
                             if (shipToMoveIndex !== null) {
                                 calculateValidMoves(shipToMoveIndex, myPlayer.grid);
                                 
-                                if (myPlayer.grid[shipToMoveIndex] !== 1) {
+                                const shipCoord = toGridCoord(shipToMoveIndex);
+                                if (myPlayer.grid[shipCoord] !== 1) {
                                     cancelMove(); 
                                     gameStatus.textContent = "Your Turn! Attack!";
                                     if (!hasMovedShipThisTurn) {
@@ -971,7 +1014,8 @@
                         if (player.isOut) {
                             opponentGridsContainer.innerHTML += createPlayerOutHTML(player);
                         } else {
-                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && !myPlayer.isSkippingTurn && shipToMoveIndex === null);
+                            // MODIFIED: Opponent grid is active if it's my turn, I'm not skipping, I'm not moving, AND I'm not eliminated.
+                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && !myPlayer.isSkippingTurn && shipToMoveIndex === null && !isEliminated);
                         }
                     });
                     break;
@@ -1008,19 +1052,26 @@
 
             if (myPlayer.color === newColor) return; 
 
-            document.querySelectorAll('#room-color-picker .color-swatch').forEach(s => s.classList.remove('selected'));
-            swatch.classList.add('selected');
-
+            // --- Optimistic UI Update ---
+            const oldPlayers = localGameData.players; // Save old state
             const newPlayers = localGameData.players.map(p => 
                 p.userId === userId ? { ...p, color: newColor } : p
             );
+            localGameData.players = newPlayers; // Mutate local state
             
+            // Re-render picker manually for speed
+            document.querySelectorAll('#room-color-picker .color-swatch').forEach(s => s.classList.remove('selected'));
+            swatch.classList.add('selected');
+            // --- End Optimistic ---
+
             const roomRef = doc(db, getRoomPath());
             try {
                 await updateDoc(roomRef, { players: newPlayers });
             } catch (err) {
                 console.error("Error setting color:", err);
-                showMessage("Error setting color. Please try again.");
+                showMessage("Error setting color. Reverting.");
+                localGameData.players = oldPlayers; // Revert
+                renderColorPicker(localGameData); // Re-render
             }
         }
 
@@ -1063,7 +1114,8 @@
                     currentPlayerIndex: 0,
                     gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }],
                     createdAt: serverTimestamp(),
-                    winner: null
+                    winner: null,
+                    creatorId: userId // NEW: Store creator ID
                 };
                 await setDoc(roomRef, newRoomData);
                 isSpectator = false; // You are the creator, not a spectator
@@ -1154,6 +1206,13 @@
         
         async function handleStartGame() {
             if (!localGameData) return;
+
+            // NEW: Only host can start
+            if (localGameData.creatorId !== userId) {
+                startGameError.textContent = "Only the host can start the game.";
+                return;
+            }
+
             if (localGameData.players.length < 2) {
                 startGameError.textContent = "Need at least 2 players to start.";
                 return;
@@ -1181,7 +1240,7 @@
         }
         
         /**
-         * NEW: Handles joining the integrated voice chat using PeerJS.
+         * Handles joining the integrated voice chat using PeerJS.
          */
         async function handleJoinVoiceChat() {
             if (peer || localStream || isSpectator) return; // Already joined or is spectator
@@ -1242,7 +1301,7 @@
         }
         
         /**
-         * NEW: Calls a specific PeerJS ID.
+         * Calls a specific PeerJS ID.
          * @param {string} peerId - The PeerJS ID of the player to call.
          */
         function callPlayer(peerId) {
@@ -1255,7 +1314,7 @@
         }
         
         /**
-         * NEW: Manages a new voice connection (incoming or outgoing).
+         * Manages a new voice connection (incoming or outgoing).
          * @param {Peer.MediaConnection} call - The PeerJS media connection.
          */
         function handleNewVoiceConnection(call) {
@@ -1287,7 +1346,7 @@
 
 
         /**
-         * NEW: Toggles local microphone mute state.
+         * Toggles local microphone mute state.
          */
         function handleMuteSelf() {
             if (!localStream) return;
@@ -1311,27 +1370,31 @@
             if (!cellEl) return;
             if (!localGameData || isSpectator) return; // Spectators can't click grids
             
-            const row = parseInt(cellEl.dataset.row);
-            const col = parseInt(cellEl.dataset.col);
-            if (isNaN(row) || isNaN(col)) return; 
+            const myPlayer = localGameData.players.find(p => p.userId === userId);
+            if (myPlayer && myPlayer.isOut) return; // NEW: Eliminated players can't click grids
             
-            const index = toIndex(row, col);
+            const index = parseInt(cellEl.dataset.index); // CHANGED: Get index
+            if (isNaN(index)) return; 
+            const coord = cellEl.dataset.coord; // CHANGED: Get coord
+            if (!coord) return;
+            
             const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
             const isMyTurn = localGameData.gameState === 'playing' && currentPlayer.userId === userId;
 
             // --- Move Ship Logic ---
             if (isMyTurn && cellEl.closest('.my-grid') && !currentPlayer.isSkippingTurn) {
-                const myPlayer = localGameData.players.find(p => p.userId === userId);
+                // const myPlayer = localGameData.players.find(p => p.userId === userId); // Already defined above
 
                 if (validMoveIndices.includes(index)) {
                     executeSilentMove(shipToMoveIndex, index);
                     return; 
                 }
 
-                if (!hasMovedShipThisTurn && myPlayer.grid[index] === 1 && index !== shipToMoveIndex) { 
+                // CHANGED: check grid by coord
+                if (!hasMovedShipThisTurn && myPlayer.grid[coord] === 1 && index !== shipToMoveIndex) { 
                     cancelMove(); 
-                    shipToMoveIndex = index;
-                    calculateValidMoves(index, myPlayer.grid);
+                    shipToMoveIndex = index; // Store index
+                    calculateValidMoves(index, myPlayer.grid); // Pass index
                     renderGameUI(localGameData); 
                     return; 
                 }
@@ -1345,16 +1408,15 @@
 
             // --- Setup Logic ---
             if (localGameData.gameState === 'setup') {
-                const myPlayer = localGameData.players.find(p => p.userId === userId);
                 if (myPlayer.ready) return; 
                 if (cellEl.closest('.my-grid')) {
-                    handleSetupClick(index);
+                    handleSetupClick(index, coord); // CHANGED: pass both
                 }
             } 
             // --- Attack Logic ---
             else if (isMyTurn && cellEl.closest('.opponent-grid') && !currentPlayer.isSkippingTurn) {
                 if (shipToMoveIndex === null) {
-                    handleAttackClick(cellEl.dataset.playerId, index);
+                    handleAttackClick(cellEl.dataset.playerId, index, coord); // CHANGED: pass both
                 } else {
                     cancelMove();
                     renderGameUI(localGameData);
@@ -1365,55 +1427,64 @@
         /**
          * Handles placing/removing a ship during setup.
          * @param {number} index - The cell index clicked (0-35).
+         * @param {string} coord - The coordinate string (e.g., "A1").
          */
-        async function handleSetupClick(index) {
+        async function handleSetupClick(index, coord) {
             const myPlayer = localGameData.players.find(p => p.userId === userId);
-            let newGrid = [...myPlayer.grid];
-            let newShipsPlaced = myPlayer.shipsPlaced;
-            let newMinesPlaced = myPlayer.minesPlaced; // NEW
+            const oldPlayers = JSON.parse(JSON.stringify(localGameData.players)); // Deep copy for revert
             
-            const currentCell = newGrid[index];
+            let newGrid = { ...myPlayer.grid }; // Use new coord grid
+            let newShipsPlaced = myPlayer.shipsPlaced;
+            let newMinesPlaced = myPlayer.minesPlaced; 
+            
+            const currentCell = newGrid[coord]; // CHANGED
             
             if (newShipsPlaced < SHIP_COUNT) {
                 // Placing ships
                 if (currentCell === 0) {
-                    newGrid[index] = 1; // Place ship
+                    newGrid[coord] = 1; // CHANGED
                     newShipsPlaced++;
                 } else if (currentCell === 1) {
-                    newGrid[index] = 0; // Remove ship
+                    newGrid[coord] = 0; // CHANGED
                     newShipsPlaced--;
                 }
             } else if (newMinesPlaced < MINE_COUNT) {
                 // Placing mines
                 if (currentCell === 0) {
-                    newGrid[index] = 2; // Place mine
+                    newGrid[coord] = 2; // CHANGED
                     newMinesPlaced++;
                 } else if (currentCell === 2) {
-                    newGrid[index] = 0; // Remove mine
+                    newGrid[coord] = 0; // CHANGED
                     newMinesPlaced--;
                 } else if (currentCell === 1) {
                     showMessage("Cannot place a mine on a ship!");
                 }
             } else if (currentCell === 1) {
                 // All items placed, can only remove ships
-                newGrid[index] = 0;
+                newGrid[coord] = 0; // CHANGED
                 newShipsPlaced--;
             } else if (currentCell === 2) {
                  // All items placed, can only remove mines
-                newGrid[index] = 0;
+                newGrid[coord] = 0; // CHANGED
                 newMinesPlaced--;
             }
             
+            // --- Optimistic UI Update ---
             const newPlayers = localGameData.players.map(p => 
                 p.userId === userId ? { ...p, grid: newGrid, shipsPlaced: newShipsPlaced, minesPlaced: newMinesPlaced } : p
             );
+            localGameData.players = newPlayers;
+            renderGameUI(localGameData); // Re-render everything
+            // --- End Optimistic ---
             
             const roomRef = doc(db, getRoomPath());
             try {
                 await updateDoc(roomRef, { players: newPlayers });
             } catch (err) {
                 console.error("Error placing item:", err);
-                showMessage("Error placing item. Please try again.");
+                showMessage("Error placing item. Reverting.");
+                localGameData.players = oldPlayers; // Revert
+                renderGameUI(localGameData); // Re-render
             }
         }
 
@@ -1459,24 +1530,25 @@
          * Handles an attack on an opponent.
          * @param {string} targetPlayerId - The ID of the player being attacked.
          * @param {number} cellIndex - The cell index being attacked (0-35).
+         * @param {string} coord - The coordinate string (e.g., "A1").
          */
-        async function handleAttackClick(targetPlayerId, cellIndex) {
+        async function handleAttackClick(targetPlayerId, cellIndex, coord) {
             cancelMove();
             opponentGridsContainer.style.pointerEvents = 'none';
 
             const attacker = localGameData.players[localGameData.currentPlayerIndex];
             const targetPlayer = localGameData.players.find(p => p.userId === targetPlayerId);
             
-            if (typeof targetPlayer.grid[cellIndex] === 'object') {
+            if (typeof targetPlayer.grid[coord] === 'object') { // CHANGED
                 showMessage("That position has already been attacked!");
                 opponentGridsContainer.style.pointerEvents = 'auto'; 
                 return;
             }
             
-            const targetCell = targetPlayer.grid[cellIndex];
+            const targetCell = targetPlayer.grid[coord]; // CHANGED
             const wasHit = targetCell === 1;
-            const wasMine = targetCell === 2; // NEW
-            const coord = toGridCoord(cellIndex);
+            const wasMine = targetCell === 2; 
+            const coordForLog = coord; // CHANGED
             
             let logMsg = { type: 'game', message: "" };
             let newLogMessages = [];
@@ -1487,21 +1559,21 @@
             let nextPlayerIndex = localGameData.currentPlayerIndex;
             
             const attackerColor = attacker.color || DEFAULT_COLOR; 
-            const newGrid = [...targetPlayer.grid];
+            const newGrid = { ...targetPlayer.grid }; // CHANGED
             let newShipsLeft = targetPlayer.shipsLeft;
             let newIsOut = targetPlayer.isOut;
 
             if (wasHit) {
-                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... HIT! 🚢`;
-                newGrid[cellIndex] = { type: 'hit', attackerId: attacker.userId, attackerColor: attackerColor };
+                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coordForLog}... HIT! 🚢`;
+                newGrid[coord] = { type: 'hit', attackerId: attacker.userId, attackerColor: attackerColor }; // CHANGED
                 newShipsLeft--;
                 if (newShipsLeft === 0) {
                     newIsOut = true;
                     newLogMessages.push({ type: 'game', message: `${targetPlayer.name} has been eliminated!` });
                 }
-            } else if (wasMine) { // NEW: Mine logic
-                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... IT'S A MINE! 💥`;
-                newGrid[cellIndex] = { type: 'mine-hit', attackerId: attacker.userId, attackerColor: attackerColor };
+            } else if (wasMine) { 
+                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coordForLog}... IT'S A MINE! 💥`;
+                newGrid[coord] = { type: 'mine-hit', attackerId: attacker.userId, attackerColor: attackerColor }; // CHANGED
                 
                 // Mark attacker to skip their next turn
                 newPlayers = newPlayers.map(p => 
@@ -1510,8 +1582,8 @@
                 newLogMessages.push({ type: 'game', message: `${attacker.name} hit a mine and will skip their next turn!` });
             } else {
                 // Was a miss
-                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coord}... MISS! X`;
-                newGrid[cellIndex] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor };
+                logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coordForLog}... MISS! X`;
+                newGrid[coord] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor }; // CHANGED
             }
             
             newLogMessages.unshift(logMsg); // Add main log message to start
@@ -1556,7 +1628,7 @@
         }
 
         /**
-         * NEW: Handles the automatic turn skip after hitting a mine.
+         * Handles the automatic turn skip after hitting a mine.
          */
         async function handleSkipTurn() {
             if (!localGameData) return;
@@ -1585,12 +1657,15 @@
 
 
         /**
-         * NEW: Handles sending a chat message.
+         * Handles sending a chat message.
          */
         async function handleSendChat() {
             const message = chatInput.value.trim();
             if (!message) return;
-            if (!localGameData || isSpectator) return; // Spectators can't chat
+            if (!localGameData) return;
+            
+            // Allow eliminated players to chat, but not mid-game spectators
+            if (isSpectator) return; 
 
             chatInput.disabled = true;
             chatSendButton.disabled = true;
@@ -1627,7 +1702,7 @@
         /**
          * Calculates valid adjacent move destinations.
          * @param {number} fromIndex - The grid index to move from.
-         * @param {Array} grid - The player's grid.
+         * @param {object} grid - The player's grid (object map).
          */
         function calculateValidMoves(fromIndex, grid) {
             validMoveIndices = [];
@@ -1643,7 +1718,8 @@
             for (const move of potentialMoves) {
                 if (move.r >= 0 && move.r < GRID_SIZE && move.c >= 0 && move.c < GRID_SIZE) {
                     const toIndex = toIndex(move.r, move.c);
-                    if (grid[toIndex] === 0) {
+                    const toCoord = toGridCoord(toIndex); // NEW
+                    if (grid[toCoord] === 0) { // CHANGED
                         validMoveIndices.push(toIndex);
                     }
                 }
@@ -1668,9 +1744,12 @@
             myGridContainer.style.pointerEvents = 'none'; 
 
             const myPlayer = localGameData.players.find(p => p.userId === userId);
-            let newGrid = [...myPlayer.grid];
-            newGrid[fromIndex] = 0; 
-            newGrid[toIndex] = 1;   
+            let newGrid = { ...myPlayer.grid }; // CHANGED
+            const fromCoord = toGridCoord(fromIndex); // NEW
+            const toCoord = toGridCoord(toIndex); // NEW
+
+            newGrid[fromCoord] = 0; 
+            newGrid[toCoord] = 1;   
 
             let newPlayers = localGameData.players.map(p => 
                 p.userId === userId ? { ...p, grid: newGrid } : p
@@ -1698,7 +1777,7 @@
         }
 
 
-        // --- NEW: PeerJS Cleanup Functions ---
+        // --- PeerJS Cleanup Functions ---
 
         /**
          * Cleans up a single peer connection.
@@ -1717,7 +1796,7 @@
         }
 
         /**
-         * NEW: Cleans up all voice chat state (on leave/logout).
+         * Cleans up all voice chat state (on leave/logout).
          */
         function cleanupAllVoice() {
             if (localStream) {
@@ -1758,7 +1837,7 @@
             currentRoomCode = null;
             isSpectator = false; // Reset spectator flag
             
-            cleanupAllVoice(); // NEW: Clean up all PeerJS state
+            cleanupAllVoice(); // Clean up all PeerJS state
             
             cancelMove(); 
             hasMovedShipThisTurn = false; 
@@ -1787,7 +1866,13 @@
 
         async function signIn() {
             try {
-                await signInAnonymously(auth);
+                // Check for the global token provided by the Canvas environment
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    // Fallback to anonymous sign-in if no token is found
+                    await signInAnonymously(auth);
+                }
             } catch (error) {
                 console.error("Firebase Sign-In Error:", error);
                 loadingScreen.innerHTML = "<h1>Auth Error</h1><p>Could not sign in. Check console and Firebase settings.</p>";
@@ -1800,10 +1885,10 @@
             }
             
             const roomRef = doc(db, getRoomPath());
-            unsubscribeRoom = onSnapshot(roomRef, (doc) => {
-                if (doc.exists()) {
+            unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
+                if (docSnap.exists()) {
                     const oldLocalGameData = localGameData;
-                    localGameData = doc.data();
+                    localGameData = docSnap.data();
                     
                     // --- PeerJS Connection Management ---
                     if (peer && localStream) { // Only manage connections if I'm in voice
@@ -1828,7 +1913,7 @@
                     
 
                     // Don't reset move state if I am still the current player
-                    if (!isSpectator) {
+                    if (!isSpectator && localGameData.players.find(p => p.userId === userId)) {
                         const oldPlayerIndex = oldLocalGameData ? oldLocalGameData.currentPlayerIndex : -1;
                         const newPlayerIndex = localGameData.currentPlayerIndex;
                         const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
@@ -1844,15 +1929,23 @@
                     
                     renderGameUI(localGameData);
 
+                    // This logic moves from renderUI to here, to correctly disable grids *after* render
                     if (!isSpectator && localGameData.gameState === 'playing') {
-                        const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
-                        const isMyTurn = currentPlayer.userId === userId;
-                        if (isMyTurn) {
-                            if(currentPlayer.isSkippingTurn) {
-                                opponentGridsContainer.style.pointerEvents = 'none';
-                                myGridContainer.style.pointerEvents = 'none';
-                            } else if (shipToMoveIndex !== null) {
-                                opponentGridsContainer.style.pointerEvents = 'none';
+                        const myPlayer = localGameData.players.find(p => p.userId === userId);
+                        if (myPlayer.isOut) {
+                            // Eliminated, disable all grids
+                            opponentGridsContainer.style.pointerEvents = 'none';
+                            myGridContainer.style.pointerEvents = 'none';
+                        } else {
+                            const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
+                            const isMyTurn = currentPlayer.userId === userId;
+                            if (isMyTurn) {
+                                if(currentPlayer.isSkippingTurn) {
+                                    opponentGridsContainer.style.pointerEvents = 'none';
+                                    myGridContainer.style.pointerEvents = 'none';
+                                } else if (shipToMoveIndex !== null) {
+                                    opponentGridsContainer.style.pointerEvents = 'none';
+                                }
                             }
                         }
                     }
@@ -1880,7 +1973,7 @@
             }
 
             if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-                 loadingScreen.innerHTML = "<h1>Error</h1><p>Firebase is not configured. Please paste your `firebaseConfig` object into the script.</p>";
+                 loadingScreen.innerHTML = "<h1>Error</h1><p>Firebase is not configured. Please check the `firebaseConfig` object in the script.</p>";
                 return;
             }
             
