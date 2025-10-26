@@ -155,6 +155,14 @@
             background-color: #fef9c3; /* yellow-100 */
         }
 
+        /* NEW: Style for the last targeted cell */
+        .grid-cell.last-target {
+             outline: 3px solid #ef4444; /* red-500 */
+             outline-offset: 1px;
+             box-shadow: 0 0 8px rgba(239, 68, 68, 0.7); /* Optional: add a glow */
+        }
+
+
         /* Player card when out */
         .player-out-card {
             background-color: #f3f4f6; /* gray-100 */
@@ -292,6 +300,7 @@
                 <div class="flex items-center gap-2">
                     <span class="text-sm text-gray-500">Room:</span>
                     <span id="room-display" class="text-xl font-bold font-mono text-yellow-500"></span>
+                    <span id="host-indicator" class="text-xs font-bold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full hidden">(HOST)</span>
                 </div>
                 <!-- Voice Chat Buttons -->
                 <div class="flex gap-2">
@@ -451,6 +460,7 @@
         let localGameData = null;
         let unsubscribeRoom = null;
         let isSpectator = false;
+        let isHost = false; // NEW: Track if current user is the host
         
         // --- PeerJS Voice Chat Globals ---
         let peer = null;
@@ -460,8 +470,8 @@
         let isMuted = false;
         
         // State for click-to-move
-        let shipToMoveIndex = null;   // Index of the ship being moved
-        let validMoveIndices = [];    // Array of valid destination indices
+        let shipToMoveIndex = null;   // Grid Index (0-35) of the ship being moved
+        let validMoveIndices = [];    // Array of valid destination grid indices (0-35)
         let hasMovedShipThisTurn = false; // Local flag for ship movement
 
         // Darker Pastel colors
@@ -515,6 +525,7 @@
         const loginError = document.getElementById('login-error');
 
         const roomDisplay = document.getElementById('room-display');
+        const hostIndicator = document.getElementById('host-indicator'); // NEW
         const gameStatus = document.getElementById('game-status');
         const myNameDisplay = document.getElementById('my-name-display');
         const voiceChatButton = document.getElementById('voice-chat-button');
@@ -625,31 +636,31 @@
          * @returns {string} - The coordinate string (e.g., "A1", "F6").
          */
         function toGridCoord(index) {
+            if (index < 0 || index >= GRID_SIZE * GRID_SIZE) return null; // Add bounds check
             const { row, col } = toRowCol(index);
             const rowLabel = ['A', 'B', 'C', 'D', 'E', 'F'][row];
             const colLabel = col + 1;
             return `${rowLabel}${colLabel}`;
         }
-
+       
         /**
-         * Creates a new player object.
+         * Creates a new player object structure (used locally).
          * @returns {object} - The player object.
          */
-        function createNewPlayer() {
-            // NEW: Create grid as an object
+        function createNewPlayerObject() {
             const grid = {};
             for (let r = 0; r < GRID_SIZE; r++) {
                 for (let c = 0; c < GRID_SIZE; c++) {
                     const coord = toGridCoord(toIndex(r,c));
-                    grid[coord] = 0; // 0 = empty
+                    if(coord) grid[coord] = 0; // 0 = empty
                 }
             }
 
             return {
-                userId: userId,
+                // userId is the key in the players map
                 name: myPlayerName,
                 color: null, // Color set after joining
-                grid: grid, // NEW: Grid is an object
+                grid: grid, 
                 shipsPlaced: 0,
                 minesPlaced: 0, 
                 shipsLeft: SHIP_COUNT, 
@@ -662,12 +673,14 @@
 
         /**
          * Creates the HTML for a single player's grid.
-         * @param {object} player - The player data object.
+         * @param {object} player - The player data object from the players map.
+         * @param {string} playerId - The userId of the player this grid belongs to.
          * @param {boolean} isMe - Is this grid for the current user?
          * @param {boolean} isTurnActive - Is it my turn and this is an opponent?
+         * @param {object} roomData - The current room data (needed for lastTarget highlight).
          * @returns {string} - The HTML string for the grid.
          */
-        function createGridHTML(player, isMe, isTurnActive = false) {
+        function createGridHTML(player, playerId, isMe, isTurnActive = false, roomData) {
             const gridClasses = isMe ? 'my-grid' : 'opponent-grid' + (isTurnActive ? ' turn-active' : '');
             let cellsHTML = '';
             const playerColor = player.color || DEFAULT_COLOR;
@@ -684,8 +697,10 @@
                 cellsHTML += `<div class="grid-label">${rowLabels[r]}</div>`; // Row header
                 for (let c = 0; c < GRID_SIZE; c++) {
                     const i = toIndex(r, c);
-                    const coord = toGridCoord(i); // NEW: Get coord
-                    const cellState = player.grid[coord]; // CHANGED: Read from grid object
+                    const coord = toGridCoord(i); 
+                    if (!coord) continue; // Skip if coord generation failed
+
+                    const cellState = player.grid[coord]; 
                     let cellClass = 'grid-cell';
                     let content = '';
                     let style = '';
@@ -739,15 +754,24 @@
                             }
                         }
                     }
+
+                    // NEW: Global highlight for last target
+                    if (roomData && coord === roomData.lastTargetCoord && playerId === roomData.lastTargetPlayerId) {
+                         cellClass += ' last-target';
+                    }
                     
-                    // CHANGED: Use data-index and data-coord
-                    cellsHTML += `<div class="${cellClass}" data-player-id="${player.userId}" data-index="${i}" data-coord="${coord}" style="${style}">${content}</div>`;
+                    // data-player-id is the ID of the grid's owner
+                    cellsHTML += `<div class="${cellClass}" data-player-id="${playerId}" data-index="${i}" data-coord="${coord}" style="${style}">${content}</div>`;
                 }
             }
 
+            // Display "(HOST)" next to the name if this player is the current host
+            const isCurrentHost = roomData && (roomData.currentHostId ? playerId === roomData.currentHostId : playerId === roomData.creatorId);
+            const hostLabel = isCurrentHost ? ' <span class="text-xs font-bold text-gray-400">(Host)</span>' : '';
+
             return `
                 <div class="p-2 sm:p-4 rounded-lg shadow-md ${gridClasses} ${isMe ? 'bg-blue-50' : 'bg-gray-50'}">
-                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name} ${player.peerId ? '🎙️' : ''}</h3>
+                    <h3 class="font-bold text-base sm:text-lg text-center mb-2" style="color: ${playerColor};">${player.name}${hostLabel} ${player.peerId ? '🎙️' : ''}</h3>
                     <p class="text-center text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">Ships Left: ${player.shipsLeft}</p>
                     ${player.isSkippingTurn ? '<p class="text-center text-xs sm:text-sm text-red-500 font-bold mb-2">SKIPPING TURN</p>' : ''}
                     <div class="grid-wrapper">
@@ -757,15 +781,20 @@
             `;
         }
 
+
         /**
          * Creates an "Eliminated Player" card.
          * @param {object} player - The eliminated player object.
          * @returns {string} - The HTML string for the card.
          */
         function createPlayerOutHTML(player) {
+             // Display "(HOST)" next to the name if this player *was* the current host
+            const isCurrentHost = localGameData && (localGameData.currentHostId ? player.userId === localGameData.currentHostId : player.userId === localGameData.creatorId);
+            const hostLabel = isCurrentHost ? ' <span class="text-xs font-bold text-gray-400">(Host)</span>' : '';
+
             return `
                 <div class="p-2 sm:p-4 rounded-lg shadow-md player-out-card">
-                    <h3 class="font-bold text-base sm:text-lg text-center mb-3 text-gray-500">${player.name}</h3>
+                    <h3 class="font-bold text-base sm:text-lg text-center mb-3 text-gray-500">${player.name}${hostLabel}</h3>
                     <p class="text-xl sm:text-2xl text-red-500 font-bold">ELIMINATED</p>
                 </div>
             `;
@@ -777,8 +806,9 @@
          */
         function renderColorPicker(roomData) {
             roomColorPicker.innerHTML = ''; // Clear existing swatches
-            const usedColors = roomData.players.map(p => p.color).filter(Boolean);
-            const myColor = roomData.players.find(p => p.userId === userId)?.color;
+            const players = Object.values(roomData.players || {}); // Get players from map
+            const usedColors = players.map(p => p.color).filter(Boolean);
+            const myColor = roomData.players[userId]?.color;
 
             PLAYER_COLORS.forEach(color => {
                 const swatch = document.createElement('div');
@@ -805,18 +835,24 @@
          * @param {object} roomData - The data from Firestore.
          */
         function renderGameUI(roomData) {
-            if (!roomData) return;
+            if (!roomData || !roomData.players) {
+                 console.warn("Render cancelled: roomData or roomData.players is missing.");
+                 return; // Exit if data structure is incomplete
+            }
             
-            const myPlayer = roomData.players.find(p => p.userId === userId);
+            // Check if current user is the host
+            const currentHostId = roomData.currentHostId || roomData.creatorId;
+            isHost = userId === currentHostId;
+            hostIndicator.classList.toggle('hidden', !isHost); // Show/hide host indicator
+
+            const myPlayer = roomData.players[userId]; // Get player data from map
 
             // Spectator check (joined mid-game)
             if (!myPlayer && !isSpectator) {
-                // This can happen on a bad data refresh
                 console.warn("My player data not found, but not a spectator. Re-checking auth.");
                 return;
             }
 
-            // NEW: Check if I am an eliminated player
             const isEliminated = myPlayer && myPlayer.isOut;
             
             // Update header
@@ -827,7 +863,7 @@
             myNameDisplay.textContent = myPlayerName + nameSuffix;
             
             // Clear main containers
-            myGridContainer.innerHTML = ''; // Will be re-filled
+            myGridContainer.innerHTML = ''; 
             opponentGridsContainer.innerHTML = '';
             gameLogContainer.innerHTML = '';
             playerListContainer.innerHTML = '';
@@ -836,29 +872,30 @@
             setupControls.classList.add('hidden');
             waitingRoomControls.classList.add('hidden');
             gameOverModal.classList.add('hidden');
-            chatControls.classList.add('hidden'); // Hide chat by default
+            chatControls.classList.add('hidden'); 
             
             // Render Game Log
-            roomData.gameLog.slice().reverse().forEach(logEntry => {
+            (roomData.gameLog || []).slice().reverse().forEach(logEntry => {
                 const p = document.createElement('p');
                 if (logEntry.type === 'chat') {
                     p.className = 'log-chat-message';
-                    // Sanitize message - very basic sanitation
-                    const safeMessage = logEntry.message
+                    const safeMessage = (logEntry.message || "") // Ensure message exists
                         .replace(/&/g, "&amp;")
                         .replace(/</g, "&lt;")
                         .replace(/>/g, "&gt;")
                         .replace(/"/g, "&quot;")
                         .replace(/'/g, "&#039;");
-                    p.innerHTML = `<span class="font-bold" style="color: ${logEntry.color || DEFAULT_COLOR};">${logEntry.name}:</span> ${safeMessage}`;
+                    p.innerHTML = `<span class="font-bold" style="color: ${logEntry.color || DEFAULT_COLOR};">${logEntry.name || 'Unknown'}:</span> ${safeMessage}`;
                 } else {
-                    // Default to game event
                     p.className = 'log-game-event';
-                    p.textContent = logEntry.message;
+                    p.textContent = logEntry.message || 'Game event';
                 }
                 gameLogContainer.appendChild(p);
             });
             
+            // Get player entries for iteration
+            const playerEntries = Object.entries(roomData.players || {});
+
             // --- Spectator UI (Joined mid-game) ---
             if (isSpectator) {
                 gameStatus.textContent = "Spectating Game in Progress";
@@ -874,44 +911,52 @@
                 `;
 
                 // Render all player grids as opponents
-                roomData.players.forEach(player => {
+                playerEntries.forEach(([playerId, player]) => {
                     if (player.isOut) {
                         opponentGridsContainer.innerHTML += createPlayerOutHTML(player);
                     } else {
-                        opponentGridsContainer.innerHTML += createGridHTML(player, false, false); // Never "my turn"
+                        opponentGridsContainer.innerHTML += createGridHTML(player, playerId, false, false, roomData); 
                     }
                 });
                 
                 if (roomData.gameState === "over") {
-                    const winner = roomData.players.find(p => p.userId === roomData.winner);
+                    const winner = roomData.players[roomData.winner]; // Get winner from map
                     winnerName.textContent = winner ? winner.name : 'Unknown';
                     gameOverModal.classList.remove('hidden');
                 }
-                chatControls.classList.add('hidden'); // Spectators cannot chat
-                return; // End render function for spectators
+                chatControls.classList.add('hidden'); 
+                return; 
             }
 
             // --- Player UI (Not a mid-game spectator) ---
+             const myPlayerData = roomData.players[userId]; // Ensure we have the latest data
+             if (!myPlayerData) {
+                 console.error("Could not find my player data after check. Aborting render.");
+                 return; // Should not happen if not spectator, but safety check
+             }
+
             switch (roomData.gameState) {
                 case "waiting":
                     gameStatus.textContent = "Waiting for Players... (Share Code!)";
                     waitingRoomControls.classList.remove('hidden');
                     
-                    roomData.players.forEach(player => {
+                    playerEntries.forEach(([playerId, player]) => {
+                        const isCurrentHost = (roomData.currentHostId ? playerId === roomData.currentHostId : playerId === roomData.creatorId);
+                        const hostLabel = isCurrentHost ? ' <span class="text-xs font-bold text-gray-400">(Host)</span>' : '';
                         const playerCard = `
                             <div class="p-4 bg-gray-100 rounded-lg shadow-md w-full max-w-xs text-center">
-                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name} ${player.peerId ? '🎙️' : ''}</h3>
+                                <h3 class="font-bold text-xl" style="color: ${player.color || DEFAULT_COLOR};">${player.name}${hostLabel} ${player.peerId ? '🎙️' : ''}</h3>
                                 ${player.color ? '' : '<p class="text-sm text-red-500">Choosing color...</p>'}
                             </div>
                         `;
                         playerListContainer.innerHTML += playerCard;
                     });
                     
-                    chatControls.classList.remove('hidden'); // Show chat for players
+                    chatControls.classList.remove('hidden'); 
                     renderColorPicker(roomData);
 
-                    // NEW: Host-only Start Button
-                    if (roomData.creatorId === userId) {
+                    // Host-only Start Button
+                    if (isHost) { // Use the global isHost flag
                         startGameButton.classList.remove('hidden');
                         document.getElementById('start-game-host-wait-msg')?.remove();
                     } else {
@@ -928,16 +973,16 @@
 
                 case "setup":
                     setupControls.classList.remove('hidden');
-                    shipsPlacedCount.textContent = myPlayer.shipsPlaced;
-                    minesPlacedCount.textContent = myPlayer.minesPlaced; 
+                    shipsPlacedCount.textContent = myPlayerData.shipsPlaced;
+                    minesPlacedCount.textContent = myPlayerData.minesPlaced; 
                     
-                    if (myPlayer.shipsPlaced < SHIP_COUNT) {
+                    if (myPlayerData.shipsPlaced < SHIP_COUNT) {
                         gameStatus.textContent = "Place Your Ships!";
                         setupInstructions.textContent = `Place your ${SHIP_COUNT} ships. (Click on grid)`;
-                    } else if (myPlayer.minesPlaced < MINE_COUNT) {
+                    } else if (myPlayerData.minesPlaced < MINE_COUNT) {
                         gameStatus.textContent = "Place Your Mines!";
                         setupInstructions.textContent = `Place your ${MINE_COUNT} mines. (Mines cannot be on ships)`;
-                    } else if (!myPlayer.ready) {
+                    } else if (!myPlayerData.ready) {
                         gameStatus.textContent = "Ready Up!";
                         setupInstructions.textContent = `You are all set! Hit the Ready button.`;
                     } else {
@@ -945,51 +990,64 @@
                         setupInstructions.textContent = `Waiting for other players to get ready...`;
                     }
                     
-                    readyButton.disabled = (myPlayer.shipsPlaced !== SHIP_COUNT) || (myPlayer.minesPlaced !== MINE_COUNT) || myPlayer.ready;
+                    readyButton.disabled = (myPlayerData.shipsPlaced !== SHIP_COUNT) || (myPlayerData.minesPlaced !== MINE_COUNT) || myPlayerData.ready;
                     
-                    chatControls.classList.remove('hidden'); // Show chat
-                    myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
+                    chatControls.classList.remove('hidden'); 
+                    myGridContainer.innerHTML = createGridHTML(myPlayerData, userId, true, false, roomData);
                     break;
                     
                 case "playing":
-                    const currentPlayer = roomData.players[roomData.currentPlayerIndex];
-                    const isMyTurn = currentPlayer.userId === userId;
+                     // Determine current player using index and player map keys
+                    const playerIds = Object.keys(roomData.players);
+                    const currentPlayerId = playerIds[roomData.currentPlayerIndex];
+                    const currentPlayer = roomData.players[currentPlayerId];
+
+                    if (!currentPlayer) {
+                        console.error("Current player not found at index", roomData.currentPlayerIndex);
+                        // Attempt recovery or show error
+                        // For now, just prevent errors
+                        gameStatus.textContent = "Error: Player not found";
+                        break; 
+                    }
+
+                    const isMyTurn = currentPlayerId === userId;
                     
-                    // NEW: Check for eliminated player
                     if (isEliminated) {
                         gameStatus.textContent = "You are eliminated. Spectating...";
                         gameStatus.classList.remove('text-yellow-500', 'text-red-500');
                         if (shipToMoveIndex !== null) cancelMove();
                     
                     } else if (isMyTurn) {
-                        if (myPlayer.isSkippingTurn) {
+                        if (myPlayerData.isSkippingTurn) {
                             gameStatus.textContent = "You hit a mine! Skipping your turn...";
                             gameStatus.classList.add('text-red-500');
-                            // Skip turn immediately
-                            setTimeout(handleSkipTurn, 2000); // 2s delay to show message
+                            setTimeout(handleSkipTurn, 2000); 
                         } else {
-                            const oldPlayer = localGameData ? localGameData.players[localGameData.currentPlayerIndex] : null;
-                            if (oldPlayer?.userId !== userId) {
-                                hasMovedShipThisTurn = false;
+                            // Check if turn just changed to me
+                            const oldPlayerId = oldLocalGameData ? Object.keys(oldLocalGameData.players)[oldLocalGameData.currentPlayerIndex] : null;
+                             if (oldPlayerId !== userId) {
+                                hasMovedShipThisTurn = false; // Reset move flag when turn starts
                             }
+
 
                             opponentGridsContainer.style.pointerEvents = 'auto'; 
 
                             if (shipToMoveIndex !== null) {
-                                calculateValidMoves(shipToMoveIndex, myPlayer.grid);
-                                
+                                // Validate if the ship still exists at the location (it might have been hit)
                                 const shipCoord = toGridCoord(shipToMoveIndex);
-                                if (myPlayer.grid[shipCoord] !== 1) {
-                                    cancelMove(); 
+                                if (!shipCoord || myPlayerData.grid[shipCoord] !== 1) {
+                                    cancelMove(); // Ship is gone or invalid index, cancel move
                                     gameStatus.textContent = "Your Turn! Attack!";
                                     if (!hasMovedShipThisTurn) {
-                                        gameStatus.textContent += " (Or click a ship to move)";
+                                         gameStatus.textContent += " (Or click a ship to move)";
                                     }
-                                    gameStatus.classList.add('text-yellow-500');
+                                     gameStatus.classList.add('text-yellow-500');
+
                                 } else {
-                                    gameStatus.textContent = "Move: Select an adjacent empty cell.";
-                                    gameStatus.classList.add('text-yellow-500');
-                                    opponentGridsContainer.style.pointerEvents = 'none'; 
+                                     calculateValidMoves(shipToMoveIndex, myPlayerData.grid);
+                                     gameStatus.textContent = "Move: Select an adjacent empty cell.";
+                                     gameStatus.classList.add('text-yellow-500');
+                                     opponentGridsContainer.style.pointerEvents = 'none';
                                 }
                             } else {
                                 gameStatus.textContent = "Your Turn! Attack!";
@@ -1002,35 +1060,36 @@
                     } else { 
                         gameStatus.textContent = `Waiting for ${currentPlayer.name}'s turn...`;
                         gameStatus.classList.remove('text-yellow-500', 'text-red-500');
-                        hasMovedShipThisTurn = false; 
+                        // hasMovedShipThisTurn is reset automatically when turn changes away from me (in listener)
                         if (shipToMoveIndex !== null) cancelMove(); 
                     }
                     
-                    chatControls.classList.remove('hidden'); // Show chat
-                    myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
+                    chatControls.classList.remove('hidden'); 
+                    myGridContainer.innerHTML = createGridHTML(myPlayerData, userId, true, false, roomData);
 
-                    roomData.players.forEach(player => {
-                        if (player.userId === userId) return; 
+                    playerEntries.forEach(([playerId, player]) => {
+                        if (playerId === userId) return; 
                         if (player.isOut) {
                             opponentGridsContainer.innerHTML += createPlayerOutHTML(player);
                         } else {
-                            // MODIFIED: Opponent grid is active if it's my turn, I'm not skipping, I'm not moving, AND I'm not eliminated.
-                            opponentGridsContainer.innerHTML += createGridHTML(player, false, isMyTurn && !myPlayer.isSkippingTurn && shipToMoveIndex === null && !isEliminated);
+                            opponentGridsContainer.innerHTML += createGridHTML(player, playerId, false, isMyTurn && !myPlayerData.isSkippingTurn && shipToMoveIndex === null && !isEliminated, roomData);
                         }
                     });
                     break;
                     
                 case "over":
-                    const winner = roomData.players.find(p => p.userId === roomData.winner);
+                    const winnerId = roomData.winner;
+                    const winner = winnerId ? roomData.players[winnerId] : null;
                     gameStatus.textContent = "Game Over!";
-                    winnerName.textContent = winner ? winner.name : 'Unknown';
+                    winnerName.textContent = winner ? winner.name : 'Draw'; // Changed default to Draw
                     gameOverModal.classList.remove('hidden');
                     
-                    chatControls.classList.remove('hidden'); // Show chat
-                    myGridContainer.innerHTML = createGridHTML(myPlayer, true, false);
-                    roomData.players.forEach(player => {
-                         if (player.userId === userId) return;
-                         opponentGridsContainer.innerHTML += createGridHTML(player, false, false);
+                    chatControls.classList.remove('hidden'); 
+                    myGridContainer.innerHTML = createGridHTML(myPlayerData, userId, true, false, roomData);
+                     playerEntries.forEach(([playerId, player]) => {
+                         if (playerId === userId) return;
+                         // Show final state of opponent grids
+                         opponentGridsContainer.innerHTML += createGridHTML(player, playerId, false, false, roomData); 
                     });
                     break;
             }
@@ -1040,6 +1099,7 @@
 
         /**
          * Handles selecting a color in the waiting room.
+         * Uses dot notation for atomic update.
          * @param {Event} e - The click event.
          */
         async function handleColorSelectInRoom(e) {
@@ -1048,30 +1108,25 @@
             if (!localGameData || localGameData.gameState !== 'waiting') return;
 
             const newColor = swatch.dataset.color;
-            const myPlayer = localGameData.players.find(p => p.userId === userId);
+            const myPlayer = localGameData.players[userId];
+            if (!myPlayer || myPlayer.color === newColor) return;
 
-            if (myPlayer.color === newColor) return; 
-
-            // --- Optimistic UI Update ---
-            const oldPlayers = localGameData.players; // Save old state
-            const newPlayers = localGameData.players.map(p => 
-                p.userId === userId ? { ...p, color: newColor } : p
-            );
-            localGameData.players = newPlayers; // Mutate local state
-            
-            // Re-render picker manually for speed
-            document.querySelectorAll('#room-color-picker .color-swatch').forEach(s => s.classList.remove('selected'));
-            swatch.classList.add('selected');
-            // --- End Optimistic ---
+            // Optimistically update UI
+            const oldColor = myPlayer.color;
+            myPlayer.color = newColor; // Mutate local state
+            renderColorPicker(localGameData); // Re-render picker immediately
 
             const roomRef = doc(db, getRoomPath());
             try {
-                await updateDoc(roomRef, { players: newPlayers });
+                // Use dot notation for atomic update of a single player's color
+                await updateDoc(roomRef, {
+                    [`players.${userId}.color`]: newColor
+                });
             } catch (err) {
                 console.error("Error setting color:", err);
                 showMessage("Error setting color. Reverting.");
-                localGameData.players = oldPlayers; // Revert
-                renderColorPicker(localGameData); // Re-render
+                myPlayer.color = oldColor; // Revert local state on error
+                renderColorPicker(localGameData); // Re-render picker
             }
         }
 
@@ -1107,18 +1162,24 @@
             console.log(`Creating new room: ${newRoomCode}`);
 
             try {
-                const newPlayer = createNewPlayer();
+                const newPlayer = createNewPlayerObject(); // Create the player structure
                 const newRoomData = {
-                    players: [newPlayer],
+                    players: { // Initialize players map
+                       [userId]: newPlayer 
+                    }, 
                     gameState: "waiting", 
-                    currentPlayerIndex: 0,
+                    currentPlayerIndex: 0, // Index still used for turn order over playerIds array
                     gameLog: [{ type: 'game', message: `${myPlayerName} created the room.` }],
                     createdAt: serverTimestamp(),
                     winner: null,
-                    creatorId: userId // NEW: Store creator ID
+                    creatorId: userId, 
+                    currentHostId: userId, // NEW: Initially creator is host
+                    lastTargetCoord: null, // NEW: For highlight
+                    lastTargetPlayerId: null // NEW: For highlight
                 };
                 await setDoc(roomRef, newRoomData);
-                isSpectator = false; // You are the creator, not a spectator
+                isSpectator = false; 
+                isHost = true; // NEW: Creator is host
                 showGameScreen();
                 listenToRoom();
 
@@ -1162,30 +1223,33 @@
                 } 
                 
                 const roomData = roomSnap.data();
-                const isRejoining = roomData.players.find(p => p.userId === userId);
+                const isRejoining = roomData.players && roomData.players[userId]; // Check if player exists in map
 
                 if (isRejoining) {
                     // Player rejoining, just update name. Color is preserved.
-                    const newPlayers = roomData.players.map(p => 
-                        p.userId === userId ? { ...p, name: myPlayerName } : p
-                    );
-                    await updateDoc(roomRef, { players: newPlayers });
+                     await updateDoc(roomRef, {
+                        [`players.${userId}.name`]: myPlayerName // Update only name using dot notation
+                    });
                     isSpectator = false;
+                    isHost = userId === (roomData.currentHostId || roomData.creatorId); // Check if rejoining user is host
                 } else {
                     // New player joining
+                    const playerCount = Object.keys(roomData.players || {}).length;
                     if (roomData.gameState === "waiting") {
-                        if (roomData.players.length >= MAX_PLAYERS) { 
+                        if (playerCount >= MAX_PLAYERS) { 
                             throw new Error(`Room is full (max ${MAX_PLAYERS} players).`);
                         }
-                        const newPlayer = createNewPlayer();
+                        const newPlayer = createNewPlayerObject();
                         await updateDoc(roomRef, {
-                            players: arrayUnion(newPlayer),
+                            [`players.${userId}`]: newPlayer, // Add new player using key
                             gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined the room.` })
                         });
                         isSpectator = false;
+                        isHost = false; // New joiner is not host
                     } else {
                         // Game in progress, join as spectator
                         isSpectator = true;
+                        isHost = false;
                         await updateDoc(roomRef, {
                              gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} joined as a spectator.` })
                         });
@@ -1207,18 +1271,20 @@
         async function handleStartGame() {
             if (!localGameData) return;
 
-            // NEW: Only host can start
-            if (localGameData.creatorId !== userId) {
+             // Only host can start
+             const currentHostId = localGameData.currentHostId || localGameData.creatorId;
+            if (userId !== currentHostId) {
                 startGameError.textContent = "Only the host can start the game.";
                 return;
             }
 
-            if (localGameData.players.length < 2) {
+            const players = Object.values(localGameData.players || {});
+            if (players.length < 2) {
                 startGameError.textContent = "Need at least 2 players to start.";
                 return;
             }
 
-            if (localGameData.players.some(p => p.color === null)) {
+            if (players.some(p => p.color === null)) {
                  startGameError.textContent = "All players must choose a color before starting.";
                  return;
             }
@@ -1228,16 +1294,20 @@
             
             const roomRef = doc(db, getRoomPath());
             try {
+                // Ensure playerIds array is created/updated for turn order
+                const playerIdsInOrder = Object.keys(localGameData.players); 
                 await updateDoc(roomRef, {
                     gameState: "setup",
+                    playerIds: playerIdsInOrder, // Store the order for turns
                     gameLog: arrayUnion({ type: 'game', message: "The game is starting! Place your items." })
                 });
             } catch (err) {
                 console.error("Error starting game:", err);
                 startGameError.textContent = "Error starting game. Please try again.";
-                startGameButton.disabled = false;
+                startGameButton.disabled = false; // Re-enable on error
             }
         }
+        
         
         /**
          * Handles joining the integrated voice chat using PeerJS.
@@ -1254,34 +1324,34 @@
                 
                 // 2. Initialize PeerJS
                 const myPeerId = getPeerId(currentRoomCode, userId);
-                peer = new Peer(myPeerId); // Connect to PeerJS's free signaling server
+                peer = new Peer(myPeerId); 
 
                 peer.on('open', async (id) => {
                     console.log('My PeerJS ID is:', id);
                     
-                    // 3. Update UI
                     voiceChatButton.textContent = "Voice Joined 🎙️";
                     muteSelfButton.classList.remove('hidden');
                     
-                    // 4. Update our state in Firestore to notify others
+                    // 4. Update our state in Firestore using dot notation
                     const roomRef = doc(db, getRoomPath());
-                    const myPlayer = localGameData.players.find(p => p.userId === userId);
-                    if (myPlayer) {
-                        const newPlayers = localGameData.players.map(p => 
-                            p.userId === userId ? { ...p, peerId: id } : p
-                        );
-                        await updateDoc(roomRef, { players: newPlayers });
+                    // Only update if player data actually exists
+                    if (localGameData && localGameData.players && localGameData.players[userId]) {
+                         await updateDoc(roomRef, {
+                             [`players.${userId}.peerId`]: id
+                         });
+                    } else {
+                        console.warn("Attempted to set peerId, but player data not found locally.");
                     }
                     
-                    // 5. Handle incoming calls from other players
                     peer.on('call', (call) => {
                         console.log(`Incoming call from ${call.peer}`);
-                        call.answer(localStream); // Answer the call with our stream
+                        call.answer(localStream); 
                         handleNewVoiceConnection(call);
                     });
                     
-                    // 6. Proactively call anyone *already* in voice
-                    const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.peerId);
+                    // Call others already in voice
+                    const otherPlayers = Object.values(localGameData.players || {});
+                    const otherPlayersInVoice = otherPlayers.filter(p => p.userId !== userId && p.peerId); // Check map values
                     for (const player of otherPlayersInVoice) {
                         callPlayer(player.peerId);
                     }
@@ -1290,7 +1360,7 @@
                 peer.on('error', (err) => {
                     console.error("PeerJS Error:", err);
                     showMessage(`Voice Chat Error: ${err.message}. Please try rejoining.`);
-                    cleanupAllVoice(); // Reset on error
+                    cleanupAllVoice(); 
                 });
 
             } catch (err) {
@@ -1302,35 +1372,57 @@
         
         /**
          * Calls a specific PeerJS ID.
-         * @param {string} peerId - The PeerJS ID of the player to call.
          */
         function callPlayer(peerId) {
-             if (!peer || !localStream) return;
-             if (voiceConnections[peerId]) return; // Already connected
+             if (!peer || !localStream || !peerId) return; // Added check for peerId
+             if (voiceConnections[peerId]) return; 
              
              console.log(`Calling ${peerId}`);
-             const call = peer.call(peerId, localStream);
-             handleNewVoiceConnection(call);
+             try { // Add try-catch for potential peer.call errors
+                 const call = peer.call(peerId, localStream);
+                 if (call) { // Check if call was created
+                    handleNewVoiceConnection(call);
+                 } else {
+                    console.warn(`Peer.call returned null for peerId: ${peerId}. Peer might not be available.`);
+                 }
+             } catch (err) {
+                 console.error(`Error calling peer ${peerId}:`, err);
+             }
         }
         
         /**
          * Manages a new voice connection (incoming or outgoing).
-         * @param {Peer.MediaConnection} call - The PeerJS media connection.
          */
         function handleNewVoiceConnection(call) {
+             if (!call) return; // Safety check
             const peerId = call.peer;
+            if (!peerId) return; // Safety check
+
+            // Prevent duplicate handling if already connected
+            if (voiceConnections[peerId]) {
+                console.log(`Already have a connection with ${peerId}, ignoring new call object.`);
+                return;
+            }
+
             voiceConnections[peerId] = call;
+            console.log(`Handling new voice connection with ${peerId}`);
 
             call.on('stream', (remoteStream) => {
                 console.log(`Receiving stream from ${peerId}`);
                 let audioEl = audioElements[peerId];
                 if (!audioEl) {
                     audioEl = document.createElement('audio');
-                    audioEl.autoplay = true;
+                    audioEl.autoplay = true; // Ensure autoplay is enabled
+                     // Attempt to play explicitly after adding to DOM, helps with some browser policies
+                    audioEl.onloadedmetadata = () => {
+                         audioEl.play().catch(e => console.warn(`Audio play failed for ${peerId}:`, e));
+                     };
                     audioElements[peerId] = audioEl;
                     audioStreamsContainer.appendChild(audioEl);
                 }
-                audioEl.srcObject = remoteStream;
+                 if (audioEl.srcObject !== remoteStream) { // Avoid unnecessary srcObject assignments
+                    audioEl.srcObject = remoteStream;
+                }
             });
 
             call.on('close', () => {
@@ -1342,6 +1434,12 @@
                  console.error(`Call error with ${peerId}:`, err);
                  cleanupPeerConnection(peerId);
             });
+
+            // Handle case where call might already be closed when event handlers are attached
+            if (call.open === false) {
+                 console.warn(`Call with ${peerId} was already closed.`);
+                 cleanupPeerConnection(peerId);
+            }
         }
 
 
@@ -1363,38 +1461,48 @@
 
         /**
          * Handles clicking on a grid cell (for setup, moving, or attacking).
-         * @param {Event} e - The click event.
          */
         function handleGridClick(e) {
             const cellEl = e.target.closest('.grid-cell');
             if (!cellEl) return;
-            if (!localGameData || isSpectator) return; // Spectators can't click grids
+             if (!localGameData || isSpectator || !localGameData.players || !localGameData.players[userId]) {
+                 return; // Exit if spectator or player data missing
+             }
             
-            const myPlayer = localGameData.players.find(p => p.userId === userId);
-            if (myPlayer && myPlayer.isOut) return; // NEW: Eliminated players can't click grids
+            const myPlayer = localGameData.players[userId];
+            if (myPlayer.isOut) return; 
             
-            const index = parseInt(cellEl.dataset.index); // CHANGED: Get index
+            const index = parseInt(cellEl.dataset.index); 
             if (isNaN(index)) return; 
-            const coord = cellEl.dataset.coord; // CHANGED: Get coord
+            const coord = cellEl.dataset.coord; 
             if (!coord) return;
             
-            const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
-            const isMyTurn = localGameData.gameState === 'playing' && currentPlayer.userId === userId;
+             // Determine current player using index and player map keys
+             if (!localGameData.playerIds || localGameData.playerIds.length === 0) {
+                 console.warn("Player order (playerIds) not set yet.");
+                 return; // Cannot determine turn if order isn't set
+             }
+            const currentPlayerId = localGameData.playerIds[localGameData.currentPlayerIndex];
+            const currentPlayer = localGameData.players[currentPlayerId];
+
+            if (!currentPlayer) {
+                console.error("Current player object not found for ID:", currentPlayerId);
+                return;
+            }
+
+            const isMyTurn = currentPlayerId === userId;
 
             // --- Move Ship Logic ---
-            if (isMyTurn && cellEl.closest('.my-grid') && !currentPlayer.isSkippingTurn) {
-                // const myPlayer = localGameData.players.find(p => p.userId === userId); // Already defined above
-
-                if (validMoveIndices.includes(index)) {
+            if (isMyTurn && cellEl.closest('.my-grid') && !myPlayer.isSkippingTurn) { // Use myPlayer for skip check
+                 if (validMoveIndices.includes(index)) {
                     executeSilentMove(shipToMoveIndex, index);
                     return; 
                 }
 
-                // CHANGED: check grid by coord
                 if (!hasMovedShipThisTurn && myPlayer.grid[coord] === 1 && index !== shipToMoveIndex) { 
                     cancelMove(); 
-                    shipToMoveIndex = index; // Store index
-                    calculateValidMoves(index, myPlayer.grid); // Pass index
+                    shipToMoveIndex = index; 
+                    calculateValidMoves(index, myPlayer.grid); 
                     renderGameUI(localGameData); 
                     return; 
                 }
@@ -1410,13 +1518,13 @@
             if (localGameData.gameState === 'setup') {
                 if (myPlayer.ready) return; 
                 if (cellEl.closest('.my-grid')) {
-                    handleSetupClick(index, coord); // CHANGED: pass both
+                    handleSetupClick(index, coord); 
                 }
             } 
             // --- Attack Logic ---
-            else if (isMyTurn && cellEl.closest('.opponent-grid') && !currentPlayer.isSkippingTurn) {
+            else if (isMyTurn && cellEl.closest('.opponent-grid') && !myPlayer.isSkippingTurn) { // Use myPlayer for skip check
                 if (shipToMoveIndex === null) {
-                    handleAttackClick(cellEl.dataset.playerId, index, coord); // CHANGED: pass both
+                    handleAttackClick(cellEl.dataset.playerId, index, coord); 
                 } else {
                     cancelMove();
                     renderGameUI(localGameData);
@@ -1425,233 +1533,316 @@
         }
 
         /**
-         * Handles placing/removing a ship during setup.
+         * Handles placing/removing a ship or mine during setup.
+         * Uses dot notation for atomic update.
          * @param {number} index - The cell index clicked (0-35).
          * @param {string} coord - The coordinate string (e.g., "A1").
          */
         async function handleSetupClick(index, coord) {
-            const myPlayer = localGameData.players.find(p => p.userId === userId);
-            const oldPlayers = JSON.parse(JSON.stringify(localGameData.players)); // Deep copy for revert
-            
-            let newGrid = { ...myPlayer.grid }; // Use new coord grid
-            let newShipsPlaced = myPlayer.shipsPlaced;
-            let newMinesPlaced = myPlayer.minesPlaced; 
-            
-            const currentCell = newGrid[coord]; // CHANGED
-            
+             const myPlayer = localGameData.players[userId];
+             if (!myPlayer) return; // Should not happen
+
+             let newGridValue = myPlayer.grid[coord];
+             let newShipsPlaced = myPlayer.shipsPlaced;
+             let newMinesPlaced = myPlayer.minesPlaced;
+
+             const currentCell = myPlayer.grid[coord];
+
             if (newShipsPlaced < SHIP_COUNT) {
-                // Placing ships
-                if (currentCell === 0) {
-                    newGrid[coord] = 1; // CHANGED
-                    newShipsPlaced++;
-                } else if (currentCell === 1) {
-                    newGrid[coord] = 0; // CHANGED
-                    newShipsPlaced--;
-                }
+                if (currentCell === 0) { newGridValue = 1; newShipsPlaced++; }
+                else if (currentCell === 1) { newGridValue = 0; newShipsPlaced--; }
+                // Ignore clicks on mines during ship placement phase
             } else if (newMinesPlaced < MINE_COUNT) {
-                // Placing mines
-                if (currentCell === 0) {
-                    newGrid[coord] = 2; // CHANGED
-                    newMinesPlaced++;
-                } else if (currentCell === 2) {
-                    newGrid[coord] = 0; // CHANGED
-                    newMinesPlaced--;
-                } else if (currentCell === 1) {
-                    showMessage("Cannot place a mine on a ship!");
-                }
-            } else if (currentCell === 1) {
-                // All items placed, can only remove ships
-                newGrid[coord] = 0; // CHANGED
-                newShipsPlaced--;
-            } else if (currentCell === 2) {
-                 // All items placed, can only remove mines
-                newGrid[coord] = 0; // CHANGED
-                newMinesPlaced--;
+                if (currentCell === 0) { newGridValue = 2; newMinesPlaced++; }
+                else if (currentCell === 2) { newGridValue = 0; newMinesPlaced--; }
+                else if (currentCell === 1) { showMessage("Cannot place a mine on a ship!"); return; /* Do not proceed */ }
+            } else { // All items placed, only allow removal
+                if (currentCell === 1) { newGridValue = 0; newShipsPlaced--; }
+                else if (currentCell === 2) { newGridValue = 0; newMinesPlaced--; }
             }
-            
-            // --- Optimistic UI Update ---
-            const newPlayers = localGameData.players.map(p => 
-                p.userId === userId ? { ...p, grid: newGrid, shipsPlaced: newShipsPlaced, minesPlaced: newMinesPlaced } : p
-            );
-            localGameData.players = newPlayers;
-            renderGameUI(localGameData); // Re-render everything
-            // --- End Optimistic ---
-            
+
+            // Check if anything actually changed
+             if (newGridValue === currentCell) return;
+
+            // Optimistic UI update
+             const oldGridValue = currentCell;
+             const oldShips = myPlayer.shipsPlaced;
+             const oldMines = myPlayer.minesPlaced;
+             myPlayer.grid[coord] = newGridValue;
+             myPlayer.shipsPlaced = newShipsPlaced;
+             myPlayer.minesPlaced = newMinesPlaced;
+             renderGameUI(localGameData); // Update immediately
+
+            // Update Firestore using dot notation
             const roomRef = doc(db, getRoomPath());
             try {
-                await updateDoc(roomRef, { players: newPlayers });
+                await updateDoc(roomRef, {
+                    [`players.${userId}.grid.${coord}`]: newGridValue,
+                    [`players.${userId}.shipsPlaced`]: newShipsPlaced,
+                    [`players.${userId}.minesPlaced`]: newMinesPlaced
+                });
             } catch (err) {
-                console.error("Error placing item:", err);
-                showMessage("Error placing item. Reverting.");
-                localGameData.players = oldPlayers; // Revert
-                renderGameUI(localGameData); // Re-render
+                console.error("Error updating grid/counts:", err);
+                showMessage("Error saving placement. Reverting.");
+                 // Revert optimistic update
+                 myPlayer.grid[coord] = oldGridValue;
+                 myPlayer.shipsPlaced = oldShips;
+                 myPlayer.minesPlaced = oldMines;
+                 renderGameUI(localGameData);
             }
         }
 
+
         /**
-         * Handles the "Ready" button click.
+         * Handles the "Ready" button click. Uses dot notation.
          */
         async function handleReadyClick() {
-            readyButton.disabled = true;
+            readyButton.disabled = true; // Disable immediately
             
-            const myPlayer = localGameData.players.find(p => p.userId === userId);
-            if (myPlayer.shipsPlaced !== SHIP_COUNT || myPlayer.minesPlaced !== MINE_COUNT) { 
+            const myPlayer = localGameData.players[userId];
+             if (!myPlayer || myPlayer.shipsPlaced !== SHIP_COUNT || myPlayer.minesPlaced !== MINE_COUNT) { 
                  showMessage(`You must place all ${SHIP_COUNT} ships and ${MINE_COUNT} mines.`);
-                 readyButton.disabled = false;
+                 readyButton.disabled = false; // Re-enable if invalid
                  return;
             }
 
-            const newPlayers = localGameData.players.map(p =>
-                p.userId === userId ? { ...p, ready: true } : p
-            );
-            
-            const allReady = newPlayers.every(p => p.ready);
-            
+             // Optimistic UI update
+            const wasReady = myPlayer.ready;
+            myPlayer.ready = true;
+            renderGameUI(localGameData); // Show waiting state immediately
+
+
             const roomRef = doc(db, getRoomPath());
             try {
-                if (allReady) {
-                    await updateDoc(roomRef, {
-                        players: newPlayers,
-                        gameState: "playing",
-                        currentPlayerIndex: 0, 
-                        gameLog: arrayUnion({ type: 'game', message: "All players are ready! The battle begins!" })
-                    });
-                } else {
-                    await updateDoc(roomRef, { players: newPlayers });
-                }
+                 // Update just my ready status first
+                 await updateDoc(roomRef, {
+                     [`players.${userId}.ready`]: true
+                 });
+
+                 // Re-fetch the latest data to check if everyone is ready *now*
+                 // This avoids a race condition where two players click ready simultaneously
+                 const updatedDocSnap = await getDoc(roomRef);
+                 if (updatedDocSnap.exists()) {
+                     const updatedRoomData = updatedDocSnap.data();
+                     const allPlayers = Object.values(updatedRoomData.players || {});
+                     const allReady = allPlayers.length > 0 && allPlayers.every(p => p.ready);
+
+                     if (allReady && updatedRoomData.gameState === 'setup') {
+                        // If everyone is now ready, transition to playing state
+                        console.log("All players ready, starting game!");
+                        await updateDoc(roomRef, {
+                            gameState: "playing",
+                            currentPlayerIndex: 0, // Reset turn index
+                            gameLog: arrayUnion({ type: 'game', message: "All players are ready! The battle begins!" })
+                        });
+                     }
+                 }
+
             } catch (err) {
-                console.error("Error setting ready status:", err);
-                showMessage("Error. Please try again.");
-                readyButton.disabled = false;
+                console.error("Error setting ready status or starting game:", err);
+                showMessage("Error setting ready status. Please try again.");
+                // Revert optimistic update on error
+                myPlayer.ready = wasReady;
+                renderGameUI(localGameData);
+                readyButton.disabled = false; // Re-enable button on error
             }
+            // Button remains disabled on success
         }
+
 
         /**
          * Handles an attack on an opponent.
          * @param {string} targetPlayerId - The ID of the player being attacked.
-         * @param {number} cellIndex - The cell index being attacked (0-35).
-         * @param {string} coord - The coordinate string (e.g., "A1").
+         * @param {number} cellIndex - The cell index being attacked (0-35). NOT USED directly for update.
+         * @param {string} coord - The coordinate string (e.g., "A1"). USED for update.
          */
         async function handleAttackClick(targetPlayerId, cellIndex, coord) {
             cancelMove();
-            opponentGridsContainer.style.pointerEvents = 'none';
+            opponentGridsContainer.style.pointerEvents = 'none'; // Disable opponent grids during processing
 
-            const attacker = localGameData.players[localGameData.currentPlayerIndex];
-            const targetPlayer = localGameData.players.find(p => p.userId === targetPlayerId);
-            
-            if (typeof targetPlayer.grid[coord] === 'object') { // CHANGED
+            // Refetch latest data to minimize race conditions during attack
+            const roomRef = doc(db, getRoomPath());
+            let currentRoomData;
+            try {
+                const roomSnap = await getDoc(roomRef);
+                if (!roomSnap.exists()) throw new Error("Room data missing");
+                currentRoomData = roomSnap.data();
+            } catch (err) {
+                console.error("Failed to fetch latest room data before attack:", err);
+                showMessage("Network error. Please try attacking again.");
+                opponentGridsContainer.style.pointerEvents = 'auto'; // Re-enable on error
+                return;
+            }
+
+             // Verify turn and target validity with the fresh data
+             if (!currentRoomData.playerIds || currentRoomData.playerIds.length === 0) {
+                 console.error("Player order missing in fetched data.");
+                 showMessage("Game error. Please refresh.");
+                 opponentGridsContainer.style.pointerEvents = 'auto';
+                 return;
+             }
+            const currentPlayerId = currentRoomData.playerIds[currentRoomData.currentPlayerIndex];
+            if (currentPlayerId !== userId) {
+                 console.warn("Not your turn based on fresh data.");
+                 // Don't show message, UI should update shortly
+                 opponentGridsContainer.style.pointerEvents = 'auto';
+                 return;
+             }
+            const attacker = currentRoomData.players[userId]; // Use fresh data
+            const targetPlayer = currentRoomData.players[targetPlayerId];
+
+             if (!targetPlayer || targetPlayer.isOut) {
+                console.warn("Target player not found or is out based on fresh data.");
+                showMessage("Invalid target."); // Should be rare
+                opponentGridsContainer.style.pointerEvents = 'auto';
+                return;
+            }
+
+            if (typeof targetPlayer.grid[coord] === 'object') {
                 showMessage("That position has already been attacked!");
                 opponentGridsContainer.style.pointerEvents = 'auto'; 
                 return;
             }
             
-            const targetCell = targetPlayer.grid[coord]; // CHANGED
+            // --- Determine outcome ---
+            const targetCell = targetPlayer.grid[coord]; 
             const wasHit = targetCell === 1;
             const wasMine = targetCell === 2; 
-            const coordForLog = coord; // CHANGED
+            const coordForLog = coord; 
             
             let logMsg = { type: 'game', message: "" };
             let newLogMessages = [];
-            
-            let newPlayers = [...localGameData.players];
-            let newGameState = localGameData.gameState;
-            let newWinner = null;
-            let nextPlayerIndex = localGameData.currentPlayerIndex;
+            let updatePayload = {}; // Build the update object atomically
             
             const attackerColor = attacker.color || DEFAULT_COLOR; 
-            const newGrid = { ...targetPlayer.grid }; // CHANGED
             let newShipsLeft = targetPlayer.shipsLeft;
             let newIsOut = targetPlayer.isOut;
+            let attackerWillSkip = attacker.isSkippingTurn; // Start with current skip state
 
-            if (wasHit) {
+             if (wasHit) {
                 logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coordForLog}... HIT! 🚢`;
-                newGrid[coord] = { type: 'hit', attackerId: attacker.userId, attackerColor: attackerColor }; // CHANGED
+                updatePayload[`players.${targetPlayerId}.grid.${coord}`] = { type: 'hit', attackerId: attacker.userId, attackerColor: attackerColor };
                 newShipsLeft--;
+                 updatePayload[`players.${targetPlayerId}.shipsLeft`] = newShipsLeft;
                 if (newShipsLeft === 0) {
                     newIsOut = true;
+                    updatePayload[`players.${targetPlayerId}.isOut`] = true;
                     newLogMessages.push({ type: 'game', message: `${targetPlayer.name} has been eliminated!` });
                 }
             } else if (wasMine) { 
                 logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coordForLog}... IT'S A MINE! 💥`;
-                newGrid[coord] = { type: 'mine-hit', attackerId: attacker.userId, attackerColor: attackerColor }; // CHANGED
-                
-                // Mark attacker to skip their next turn
-                newPlayers = newPlayers.map(p => 
-                    p.userId === attacker.userId ? { ...p, isSkippingTurn: true } : p
-                );
+                updatePayload[`players.${targetPlayerId}.grid.${coord}`] = { type: 'mine-hit', attackerId: attacker.userId, attackerColor: attackerColor };
+                 updatePayload[`players.${userId}.isSkippingTurn`] = true; // Attacker skips next turn
+                 attackerWillSkip = true; // Update local flag for later check
                 newLogMessages.push({ type: 'game', message: `${attacker.name} hit a mine and will skip their next turn!` });
             } else {
-                // Was a miss
                 logMsg.message = `${attacker.name} attacked ${targetPlayer.name} at ${coordForLog}... MISS! X`;
-                newGrid[coord] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor }; // CHANGED
+                updatePayload[`players.${targetPlayerId}.grid.${coord}`] = { type: 'miss', attackerId: attacker.userId, attackerColor: attackerColor };
             }
             
-            newLogMessages.unshift(logMsg); // Add main log message to start
-            
-            // Update target player
-            newPlayers = newPlayers.map(p => 
-                p.userId === targetPlayerId ? { ...p, grid: newGrid, shipsLeft: newShipsLeft, isOut: newIsOut } : p
-            );
+            newLogMessages.unshift(logMsg); 
+            updatePayload.gameLog = arrayUnion(...newLogMessages);
+            updatePayload.lastTargetCoord = coord; // NEW: Update last target
+            updatePayload.lastTargetPlayerId = targetPlayerId; // NEW: Update last target
 
-            // 2. Check for game over
-            const playersStillIn = newPlayers.filter(p => !p.isOut);
+             // --- Check for game over (based on potential updates) ---
+             let newGameState = currentRoomData.gameState;
+             let newWinner = currentRoomData.winner;
+             let nextPlayerIndex = currentRoomData.currentPlayerIndex;
+
+             // Temporarily apply changes to check game over state
+             const tempPlayers = JSON.parse(JSON.stringify(currentRoomData.players)); // Deep copy
+             if(updatePayload[`players.${targetPlayerId}.isOut`]) {
+                 tempPlayers[targetPlayerId].isOut = true;
+             }
+             const playersStillIn = Object.values(tempPlayers).filter(p => !p.isOut);
+
             if (playersStillIn.length === 1) {
                 newGameState = "over";
-                newWinner = playersStillIn[0].userId;
-                newLogMessages.push({ type: 'game', message: `GAME OVER! ${playersStillIn[0].name} is the winner!` });
-            } else if (playersStillIn.length === 0) {
+                newWinner = playersStillIn[0].userId; // Note: userId is key, but player object needed for name
+                updatePayload.gameState = newGameState;
+                updatePayload.winner = newWinner;
+                 // Add game over log message directly here if needed, or rely on the elimination message
+                // updatePayload.gameLog = arrayUnion(...newLogMessages, { type: 'game', message: `GAME OVER! ${playersStillIn[0].name} is the winner!` });
+
+            } else if (playersStillIn.length === 0) { // Should be rare, implies simultaneous elimination?
                 newGameState = "over";
-                newLogMessages.push({ type: 'game', message: "GAME OVER! It's a draw!" });
+                newWinner = null; // Draw
+                updatePayload.gameState = newGameState;
+                updatePayload.winner = newWinner;
+                // updatePayload.gameLog = arrayUnion(...newLogMessages, { type: 'game', message: "GAME OVER! It's a draw!" });
             }
             
-            // 3. Determine next turn
-            // Turn only advances on a MISS or a MINE HIT
+            // --- Determine next turn ---
+            // Turn only advances on a MISS or a MINE HIT (and game not over)
             if (newGameState === "playing" && !wasHit) {
-                do {
-                    nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
-                } while (newPlayers[nextPlayerIndex].isOut);
+                 const playerIds = currentRoomData.playerIds; // Use the ordered list
+                 if (playerIds && playerIds.length > 0) {
+                    let attempts = 0;
+                    do {
+                         nextPlayerIndex = (nextPlayerIndex + 1) % playerIds.length;
+                         attempts++;
+                    } while (currentRoomData.players[playerIds[nextPlayerIndex]]?.isOut && attempts < playerIds.length * 2); // Find next active player
+
+                    if(attempts >= playerIds.length * 2) {
+                        console.error("Could not find next active player, potential infinite loop averted.");
+                        // Handle error state? Maybe declare a draw?
+                    } else {
+                        updatePayload.currentPlayerIndex = nextPlayerIndex;
+                    }
+
+                 } else {
+                     console.error("playerIds missing or empty, cannot advance turn.");
+                 }
             }
             
-            const roomRef = doc(db, getRoomPath());
+            // --- Execute the combined update ---
             try {
-                await updateDoc(roomRef, {
-                    players: newPlayers,
-                    gameState: newGameState,
-                    winner: newWinner,
-                    currentPlayerIndex: nextPlayerIndex,
-                    gameLog: arrayUnion(...newLogMessages) 
-                });
+                await updateDoc(roomRef, updatePayload);
+                // No need to re-enable opponent grids here, snapshot listener will trigger re-render
             } catch (err) {
-                console.error("Error during attack:", err);
+                console.error("Error during attack update:", err);
                 showMessage("Error processing attack. Please try again.");
+                opponentGridsContainer.style.pointerEvents = 'auto'; // Re-enable on error
             } 
         }
 
         /**
          * Handles the automatic turn skip after hitting a mine.
+         * Uses dot notation.
          */
         async function handleSkipTurn() {
-            if (!localGameData) return;
+             if (!localGameData || !localGameData.playerIds || localGameData.playerIds.length === 0) {
+                 console.warn("Cannot skip turn: localGameData or playerIds missing.");
+                 return;
+             }
             
-            let newPlayers = localGameData.players.map(p => 
-                p.userId === userId ? { ...p, isSkippingTurn: false } : p
-            );
-            
-            // Find next player
+            // Find next player index
             let nextPlayerIndex = localGameData.currentPlayerIndex;
+            const playerIds = localGameData.playerIds;
+            let attempts = 0;
             do {
-                nextPlayerIndex = (nextPlayerIndex + 1) % newPlayers.length;
-            } while (newPlayers[nextPlayerIndex].isOut);
+                nextPlayerIndex = (nextPlayerIndex + 1) % playerIds.length;
+                attempts++;
+            } while (localGameData.players[playerIds[nextPlayerIndex]]?.isOut && attempts < playerIds.length * 2); // Check if next player is out
+
+             if (attempts >= playerIds.length * 2) {
+                 console.error("Could not find next active player for skip turn.");
+                 // Maybe game should have ended? Or handle draw?
+                 return;
+             }
             
             const roomRef = doc(db, getRoomPath());
             try {
                 await updateDoc(roomRef, {
-                    players: newPlayers,
+                    [`players.${userId}.isSkippingTurn`]: false, // Reset my skip status
                     currentPlayerIndex: nextPlayerIndex,
-                    gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} skipped their turn.` })
+                    gameLog: arrayUnion({ type: 'game', message: `${myPlayerName} skipped their turn due to hitting a mine.` })
                 });
             } catch (err) {
                 console.error("Error skipping turn:", err);
+                 // If the update fails, the UI might remain stuck. 
+                 // A refresh might be needed, or more complex error handling.
             }
         }
 
@@ -1662,17 +1853,19 @@
         async function handleSendChat() {
             const message = chatInput.value.trim();
             if (!message) return;
-            if (!localGameData) return;
+             if (!localGameData || isSpectator) { // Check spectator status
+                 return; // Spectators cannot chat
+             }
             
-            // Allow eliminated players to chat, but not mid-game spectators
-            if (isSpectator) return; 
+            // Allow eliminated players to chat
+            const myPlayer = localGameData.players[userId];
+            // if (!myPlayer) return; // Allow chat even if briefly missing due to race condition? Maybe not.
 
             chatInput.disabled = true;
             chatSendButton.disabled = true;
 
-            const myPlayer = localGameData.players.find(p => p.userId === userId);
             const myColor = myPlayer?.color || DEFAULT_COLOR;
-            const myName = myPlayerName; 
+            const myName = myPlayerName || "Player"; // Fallback name
 
             const chatObject = { 
                 type: 'chat', 
@@ -1691,6 +1884,7 @@
                 console.error("Error sending chat:", err);
                 showMessage("Error sending message. Please try again.");
             } finally {
+                // Re-enable even if player data briefly disappeared
                 chatInput.disabled = false;
                 chatSendButton.disabled = false;
                 chatInput.focus();
@@ -1700,9 +1894,9 @@
         // --- REVISED: Ship Moving Functions ---
 
         /**
-         * Calculates valid adjacent move destinations.
-         * @param {number} fromIndex - The grid index to move from.
-         * @param {object} grid - The player's grid (object map).
+         * Calculates valid adjacent move destinations based on grid index.
+         * @param {number} fromIndex - The grid index (0-35) to move from.
+         * @param {object} grid - The player's grid map (coord: state).
          */
         function calculateValidMoves(fromIndex, grid) {
             validMoveIndices = [];
@@ -1718,9 +1912,9 @@
             for (const move of potentialMoves) {
                 if (move.r >= 0 && move.r < GRID_SIZE && move.c >= 0 && move.c < GRID_SIZE) {
                     const toIndex = toIndex(move.r, move.c);
-                    const toCoord = toGridCoord(toIndex); // NEW
-                    if (grid[toCoord] === 0) { // CHANGED
-                        validMoveIndices.push(toIndex);
+                    const toCoord = toGridCoord(toIndex); 
+                    if (toCoord && grid[toCoord] === 0) { 
+                        validMoveIndices.push(toIndex); // Store index for UI interaction
                     }
                 }
             }
@@ -1730,49 +1924,65 @@
          * Cancels the "Move Ship" state.
          */
         function cancelMove() {
-            shipToMoveIndex = null;
-            validMoveIndices = [];
+            if (shipToMoveIndex !== null || validMoveIndices.length > 0) {
+                shipToMoveIndex = null;
+                validMoveIndices = [];
+                // No need to re-render immediately, next update or action will handle it
+                console.log("Move cancelled.");
+            }
         }
 
         /**
-         * Executes a silent ship move. Does NOT cost a turn.
+         * Executes a silent ship move. Does NOT cost a turn. Uses dot notation.
          * @param {number} fromIndex - The grid index to move from.
          * @param {number} toIndex - The grid index to move to.
          */
         async function executeSilentMove(fromIndex, toIndex) {
             gameStatus.textContent = "Moving ship...";
-            myGridContainer.style.pointerEvents = 'none'; 
+            myGridContainer.style.pointerEvents = 'none'; // Disable grid during move
 
-            const myPlayer = localGameData.players.find(p => p.userId === userId);
-            let newGrid = { ...myPlayer.grid }; // CHANGED
-            const fromCoord = toGridCoord(fromIndex); // NEW
-            const toCoord = toGridCoord(toIndex); // NEW
+            const myPlayer = localGameData.players[userId];
+            if (!myPlayer) return; // Safety check
 
-            newGrid[fromCoord] = 0; 
-            newGrid[toCoord] = 1;   
+            const fromCoord = toGridCoord(fromIndex);
+            const toCoord = toGridCoord(toIndex);
 
-            let newPlayers = localGameData.players.map(p => 
-                p.userId === userId ? { ...p, grid: newGrid } : p
-            );
-            
-            const oldLocalData = localGameData; // Keep a copy in case of error
-            localGameData.players = newPlayers;
-            hasMovedShipThisTurn = true;
-            cancelMove(); 
-            renderGameUI(localGameData); // Re-render immediately
-            myGridContainer.style.pointerEvents = 'auto'; // Re-enable
+            if (!fromCoord || !toCoord || myPlayer.grid[fromCoord] !== 1 || myPlayer.grid[toCoord] !== 0) {
+                console.error("Invalid move parameters for executeSilentMove", fromCoord, toCoord, myPlayer.grid);
+                showMessage("Invalid move. Cancelling.");
+                 cancelMove();
+                 renderGameUI(localGameData); // Re-render to clear highlights
+                 myGridContainer.style.pointerEvents = 'auto';
+                 return;
+            }
+
+            // Optimistic UI Update
+             const oldGrid = { ...myPlayer.grid }; // Store old grid for revert
+             myPlayer.grid[fromCoord] = 0;
+             myPlayer.grid[toCoord] = 1;
+             hasMovedShipThisTurn = true; // Set flag *before* cancelling move state
+             const wasMovingIndex = shipToMoveIndex; // Store index before cancelling
+             cancelMove();
+             renderGameUI(localGameData); // Re-render immediately without highlights
+             myGridContainer.style.pointerEvents = 'auto'; // Re-enable grid interaction
+
 
             const roomRef = doc(db, getRoomPath());
             try {
+                // Update Firestore using dot notation for specific grid cells
                 await updateDoc(roomRef, {
-                    players: newPlayers
+                    [`players.${userId}.grid.${fromCoord}`]: 0,
+                    [`players.${userId}.grid.${toCoord}`]: 1
                 });
+                 console.log(`Moved ship from ${fromCoord} to ${toCoord}`);
             } catch (err) {
                 console.error("Error moving ship:", err);
                 showMessage("Error moving ship. Reverting move.");
-                localGameData = oldLocalData;
-                hasMovedShipThisTurn = false;
-                renderGameUI(localGameData);
+                // Revert optimistic update
+                 myPlayer.grid = oldGrid;
+                 hasMovedShipThisTurn = false;
+                 shipToMoveIndex = wasMovingIndex; // Restore move state if needed
+                 renderGameUI(localGameData); // Re-render to show reverted state
             }
         }
 
@@ -1784,11 +1994,14 @@
          * @param {string} peerId - The PeerJS ID of the player to disconnect from.
          */
         function cleanupPeerConnection(peerId) {
+             if (!peerId) return; // Safety check
             if (voiceConnections[peerId]) {
+                console.log(`Closing connection to ${peerId}`);
                 voiceConnections[peerId].close();
                 delete voiceConnections[peerId];
             }
             if (audioElements[peerId]) {
+                audioElements[peerId].srcObject = null; // Detach stream first
                 audioElements[peerId].remove();
                 delete audioElements[peerId];
             }
@@ -1799,23 +2012,30 @@
          * Cleans up all voice chat state (on leave/logout).
          */
         function cleanupAllVoice() {
+            console.log("Cleaning up all voice connections...");
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
+                console.log("Stopped local stream.");
             }
             
+            // Close existing connections before destroying peer
+            Object.keys(voiceConnections).forEach(cleanupPeerConnection);
+             voiceConnections = {};
+             audioElements = {};
+             audioStreamsContainer.innerHTML = ''; // Clear any remaining audio elements
+
             if (peer) {
-                peer.destroy();
+                 if (!peer.destroyed) {
+                    peer.destroy();
+                    console.log("Destroyed PeerJS instance.");
+                 }
                 peer = null;
             }
 
-            Object.keys(voiceConnections).forEach(cleanupPeerConnection);
-            voiceConnections = {};
-            audioElements = {};
-            audioStreamsContainer.innerHTML = '';
             
             muteSelfButton.classList.add('hidden');
-            voiceChatButton.classList.add('hidden');
+            voiceChatButton.classList.add('hidden'); // Keep hidden until game screen shown
             voiceChatButton.disabled = false;
             voiceChatButton.textContent = "Join Voice 🎙️";
             isMuted = false;
@@ -1830,14 +2050,16 @@
             loginScreen.classList.remove('hidden');
             
             if (unsubscribeRoom) {
+                console.log("Unsubscribing from room listener.");
                 unsubscribeRoom();
                 unsubscribeRoom = null;
             }
             localGameData = null;
             currentRoomCode = null;
-            isSpectator = false; // Reset spectator flag
+            isSpectator = false; 
+            isHost = false; // Reset host status
             
-            cleanupAllVoice(); // Clean up all PeerJS state
+            cleanupAllVoice(); 
             
             cancelMove(); 
             hasMovedShipThisTurn = false; 
@@ -1854,12 +2076,9 @@
             gameScreen.classList.remove('hidden');
             
             // Only show voice button if NOT a spectator
-            if (!isSpectator) {
-                voiceChatButton.classList.remove('hidden');
-            } else {
-                voiceChatButton.classList.add('hidden');
-                muteSelfButton.classList.add('hidden');
-            }
+            voiceChatButton.classList.toggle('hidden', isSpectator);
+            // Mute button visibility depends on voice state, handled later
+            muteSelfButton.classList.add('hidden'); 
         }
 
         // --- Firebase Initialization ---
@@ -1868,100 +2087,175 @@
             try {
                 // Check for the global token provided by the Canvas environment
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                     console.log("Signing in with custom token...");
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
-                    // Fallback to anonymous sign-in if no token is found
+                     console.log("Signing in anonymously...");
                     await signInAnonymously(auth);
                 }
             } catch (error) {
                 console.error("Firebase Sign-In Error:", error);
-                loadingScreen.innerHTML = "<h1>Auth Error</h1><p>Could not sign in. Check console and Firebase settings.</p>";
+                loadingScreen.innerHTML = `<h1>Auth Error</h1><p>Could not sign in: ${error.message}. Check console and Firebase settings.</p>`;
             }
         }
 
+        // --- NEW: Host Migration Logic ---
+        async function checkAndHandleHostMigration(roomData) {
+            if (!roomData || !roomData.creatorId || !roomData.players) return; // Need essential data
+
+             const currentHostId = roomData.currentHostId || roomData.creatorId;
+             const hostExists = roomData.players[currentHostId]; // Check if current host is still in the players map
+
+             // Only migrate if host is missing AND game is in waiting/setup
+             if (!hostExists && (roomData.gameState === 'waiting' || roomData.gameState === 'setup')) {
+                 console.log(`Host (${currentHostId}) seems to have left.`);
+                 const playerIds = Object.keys(roomData.players);
+                 if (playerIds.length > 0) {
+                     const newHostId = playerIds[0]; // Simple: first player in map becomes new host
+                     console.log(`Attempting to assign new host: ${newHostId}`);
+
+                     // Only the *new host* should attempt the update to avoid race conditions
+                     if (newHostId === userId) {
+                        const roomRef = doc(db, getRoomPath());
+                         try {
+                             await updateDoc(roomRef, {
+                                 currentHostId: newHostId,
+                                 gameLog: arrayUnion({ type: 'game', message: `${roomData.players[newHostId]?.name || 'New host'} has become the host.` })
+                             });
+                             console.log("Successfully claimed host status.");
+                             isHost = true; // Update local state immediately
+                         } catch (err) {
+                             console.error("Error claiming host status:", err);
+                             // Another player might have claimed it first, which is okay.
+                         }
+                     } else {
+                         console.log("Waiting for new host to claim status.");
+                     }
+                 } else {
+                     console.log("No players left to assign host.");
+                     // Potentially delete the room or mark as abandoned?
+                 }
+             } else if (hostExists) {
+                 // Update local host status if it changed (e.g., on join/rejoin)
+                 isHost = userId === currentHostId;
+             }
+         }
+
+
         function listenToRoom() {
             if (unsubscribeRoom) {
+                console.warn("Already listening to a room. Unsubscribing first.");
                 unsubscribeRoom();
             }
             
+            console.log(`Listening to room: ${currentRoomCode}`);
             const roomRef = doc(db, getRoomPath());
             unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
                 if (docSnap.exists()) {
-                    const oldLocalGameData = localGameData;
-                    localGameData = docSnap.data();
+                    const oldLocalGameData = localGameData; // Keep for comparison
+                    const newRoomData = docSnap.data();
+                    localGameData = newRoomData; // Update global state
                     
+                     // --- Host Migration Check ---
+                     checkAndHandleHostMigration(newRoomData);
+
                     // --- PeerJS Connection Management ---
-                    if (peer && localStream) { // Only manage connections if I'm in voice
-                        const otherPlayersInVoice = localGameData.players.filter(p => p.userId !== userId && p.peerId);
-                        const otherPlayerPeerIds = otherPlayersInVoice.map(p => p.peerId);
+                    if (peer && localStream && newRoomData.players) { 
+                        const playerMap = newRoomData.players;
+                        const otherPlayersInVoice = Object.entries(playerMap)
+                            .filter(([id, p]) => id !== userId && p.peerId)
+                            .map(([id, p]) => p); // Get player objects
+                         const otherPlayerPeerIds = otherPlayersInVoice.map(p => p.peerId);
                         
                         // Connect to new players
-                        for (const player of otherPlayersInVoice) {
-                            if (!voiceConnections[player.peerId]) {
+                        otherPlayersInVoice.forEach(player => {
+                            if (player.peerId && !voiceConnections[player.peerId]) { // Check peerId exists
                                 callPlayer(player.peerId);
                             }
-                        }
+                        });
                         
-                        // Disconnect from leavers
-                        for (const peerId in voiceConnections) {
+                        // Disconnect from leavers/those without peerId now
+                         Object.keys(voiceConnections).forEach(peerId => {
                             if (!otherPlayerPeerIds.includes(peerId)) {
                                 cleanupPeerConnection(peerId);
                             }
-                        }
+                        });
                     }
                     // --- End PeerJS ---
                     
 
-                    // Don't reset move state if I am still the current player
-                    if (!isSpectator && localGameData.players.find(p => p.userId === userId)) {
-                        const oldPlayerIndex = oldLocalGameData ? oldLocalGameData.currentPlayerIndex : -1;
-                        const newPlayerIndex = localGameData.currentPlayerIndex;
-                        const myPlayerIndex = localGameData.players.findIndex(p => p.userId === userId);
-                        
-                        if (oldPlayerIndex === myPlayerIndex && newPlayerIndex !== myPlayerIndex) {
+                    // Reset move state if the turn has changed away from me
+                     if (!isSpectator && newRoomData.players && newRoomData.players[userId] && oldLocalGameData && oldLocalGameData.playerIds && newRoomData.playerIds) {
+                        const oldPlayerId = oldLocalGameData.playerIds[oldLocalGameData.currentPlayerIndex];
+                        const newPlayerId = newRoomData.playerIds[newRoomData.currentPlayerIndex];
+                         if (oldPlayerId === userId && newPlayerId !== userId) {
+                             // Turn just changed away from me
                             hasMovedShipThisTurn = false;
-                            cancelMove(); 
+                            cancelMove();
+                            console.log("Turn changed away, reset move state.");
                         }
                     }
 
+                    // Reset pointer events before render
                     opponentGridsContainer.style.pointerEvents = 'auto';
                     myGridContainer.style.pointerEvents = 'auto';
                     
-                    renderGameUI(localGameData);
+                    renderGameUI(newRoomData); // Render with the latest data
 
-                    // This logic moves from renderUI to here, to correctly disable grids *after* render
-                    if (!isSpectator && localGameData.gameState === 'playing') {
-                        const myPlayer = localGameData.players.find(p => p.userId === userId);
+                    // Disable grids based on state *after* rendering
+                     if (!isSpectator && newRoomData.gameState === 'playing' && newRoomData.players && newRoomData.players[userId]) {
+                        const myPlayer = newRoomData.players[userId];
                         if (myPlayer.isOut) {
-                            // Eliminated, disable all grids
                             opponentGridsContainer.style.pointerEvents = 'none';
                             myGridContainer.style.pointerEvents = 'none';
                         } else {
-                            const currentPlayer = localGameData.players[localGameData.currentPlayerIndex];
-                            const isMyTurn = currentPlayer.userId === userId;
-                            if (isMyTurn) {
-                                if(currentPlayer.isSkippingTurn) {
-                                    opponentGridsContainer.style.pointerEvents = 'none';
-                                    myGridContainer.style.pointerEvents = 'none';
-                                } else if (shipToMoveIndex !== null) {
-                                    opponentGridsContainer.style.pointerEvents = 'none';
+                            // Determine current player using the potentially updated index and playerIds
+                            const playerIds = newRoomData.playerIds;
+                            if (playerIds && playerIds.length > newRoomData.currentPlayerIndex) {
+                                const currentPlayerId = playerIds[newRoomData.currentPlayerIndex];
+                                const isMyTurn = currentPlayerId === userId;
+                                if (isMyTurn) {
+                                    if(myPlayer.isSkippingTurn || shipToMoveIndex !== null) {
+                                        opponentGridsContainer.style.pointerEvents = 'none';
+                                    }
+                                    if(myPlayer.isSkippingTurn) { // Disable my grid too if skipping
+                                         myGridContainer.style.pointerEvents = 'none';
+                                    }
+                                } else {
+                                     // Not my turn, disable interactions
+                                     opponentGridsContainer.style.pointerEvents = 'none';
+                                     myGridContainer.style.pointerEvents = 'none'; // Can't move opponent's ships
                                 }
+                            } else {
+                                console.warn("PlayerIds or currentPlayerIndex invalid, disabling grids as safety.");
+                                opponentGridsContainer.style.pointerEvents = 'none';
+                                myGridContainer.style.pointerEvents = 'none';
                             }
                         }
+                    } else if (newRoomData.gameState !== 'setup' && newRoomData.gameState !== 'playing') {
+                        // If not setup or playing (e.g., waiting, over), disable grids generally
+                        opponentGridsContainer.style.pointerEvents = 'none';
+                        myGridContainer.style.pointerEvents = 'none';
                     }
 
-                    if (oldLocalGameData?.gameState !== 'over' && localGameData.gameState === 'over') {
+
+                    // Show game over modal with a delay
+                    if (oldLocalGameData?.gameState !== 'over' && newRoomData.gameState === 'over') {
                         setTimeout(() => {
-                            gameOverModal.classList.remove('hidden');
+                            // Check again in case state changed back quickly
+                            if (localGameData && localGameData.gameState === 'over') {
+                                 gameOverModal.classList.remove('hidden');
+                            }
                         }, 1000);
                     }
                 } else {
+                    console.log("Room document no longer exists.");
                     showMessage("The game room no longer exists.");
                     showLoginScreen();
                 }
             }, (error) => {
                 console.error("Firestore Snapshot Error:", error);
-                showMessage("Lost connection to game room.");
+                showMessage("Lost connection to game room. Please check console.");
                 showLoginScreen();
             });
         }
@@ -2029,6 +2323,13 @@
                     if (e.key === 'Enter') joinButton.click();
                 });
 
+                 // Optional: Add beforeunload listener for better cleanup
+                 window.addEventListener('beforeunload', () => {
+                    console.log("beforeunload triggered, cleaning up voice.");
+                     cleanupAllVoice();
+                     // Note: You cannot reliably perform async operations like Firestore updates here.
+                 });
+
             } catch (err) {
                 console.error("Firebase Init Error:", err);
                 loadingScreen.innerHTML = "<h1>Error</h1><p>Could not initialize the application.</p>";
@@ -2038,3 +2339,4 @@
     </script>
 </body>
 </html>
+
